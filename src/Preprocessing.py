@@ -80,21 +80,31 @@ def extract_features(data, ts=5):
 
     # get the current insulin
     input_insulin = mat_deconstruct(data["basalBolusMem"])
+    current_basal = None
+    current_bolus = None
     # current insulin basal
-    current_basal = deal_insulin_basal(input_insulin["basal_reconstructed"])
+    if ts == 5:
+        current_basal = deal_insulin_basal(input_insulin["basal_reconstructed"])
+    elif ts == 1:
+        current_basal = deal_insulin_basal_1min(input_insulin["basal_reconstructed"])
 
     # get the current insulin bolus
-    current_bolus = deal_insulin_bolus(input_insulin["bolus_reconstructed"])
+    if ts == 5:
+        current_bolus = deal_insulin_bolus(input_insulin["bolus_reconstructed"])
+    elif ts == 1:
+        current_bolus = deal_insulin_bolus_1min(input_insulin["bolus_reconstructed"])
 
-    # # output: current G
-    # output = mat_deconstruct(data["G"])
-    # output_time = output["time"][1:]
-    # output_values = output["signals"]["values"]
-    # output_values = output_values[1:]  # Remove the first value
+    # output: current G
+    output = mat_deconstruct(data["G"])
+    output_time = output["time"][1:]
+    output_time = output_time[::ts]  # Resample to 5 min
+    output_values = output["signals"]["values"]
+    output_values = output_values[1:]  # Remove the first value
+    output_values = output_values[::ts]  # Resample to 5 min
 
-    # output: current cgm
-    output_time = input_cgm_time
-    output_values = input_cgm_values
+    # # output: current cgm
+    # output_time = input_cgm_time
+    # output_values = input_cgm_values
 
     # Ensure all arrays are of the same length
     min_length = min(
@@ -137,16 +147,16 @@ def extract_features(data, ts=5):
     return input_data, output_data
 
 
-# def deal_insulin_basal(data):
-#     basal_ary = np.array(data)
-#     # -> pmol/min
-#     basal_ary = basal_ary * 100
-#     basal_ary = basal_ary[576:]  # Remove the first 576 values
-#     basal_ary = np.append(basal_ary, 0)  # Append a zero at the end
+def deal_insulin_basal_1min(data):
+    basal_ary = np.array(data)
+    # -> pmol/min
+    basal_ary = basal_ary * 100
+    basal_ary = basal_ary[576:]  # Remove the first 576 values
+    basal_ary = np.append(basal_ary, 0)  # Append a zero at the end
 
-#     # resample the basal data from 5min to 1min
-#     basal_1min = np.repeat(basal_ary, 5)
-#     return basal_1min
+    # resample the basal data from 5min to 1min
+    basal_1min = np.repeat(basal_ary, 5)
+    return basal_1min
 
 
 def deal_insulin_basal(data):
@@ -159,26 +169,26 @@ def deal_insulin_basal(data):
     return basal_ary
 
 
-# def deal_insulin_bolus(data):
-#     bolus_ary = np.array(data)
-#     # -> pmol
-#     bolus_ary = bolus_ary * 6000
-#     bolus_ary = bolus_ary[576:]  # Remove the first 576 values
-#     bolus_ary = np.append(bolus_ary, 0)  # Append a zero at the end
+def deal_insulin_bolus_1min(data):
+    bolus_ary = np.array(data)
+    # -> pmol
+    bolus_ary = bolus_ary * 6000
+    bolus_ary = bolus_ary[576:]  # Remove the first 576 values
+    bolus_ary = np.append(bolus_ary, 0)  # Append a zero at the end
 
-#     # resample the bolus data from 5min to 1min
-#     bolus_len = len(bolus_ary)
-#     bolus_1min = np.zeros((bolus_len, 5))
-#     bolus_1min[:, 0] = bolus_ary
-#     bolus_1min = bolus_1min.flatten()
+    # resample the bolus data from 5min to 1min
+    bolus_len = len(bolus_ary)
+    bolus_1min = np.zeros((bolus_len, 5))
+    bolus_1min[:, 0] = bolus_ary
+    bolus_1min = bolus_1min.flatten()
 
-#     return bolus_1min
+    return bolus_1min
 
 
 def deal_insulin_bolus(data):
     bolus_ary = np.array(data)
     # -> pmol
-    bolus_ary = bolus_ary * 6000
+    bolus_ary = bolus_ary * (6000 / 5)  # Convert to pmol/min
     bolus_ary = bolus_ary[576:]  # Remove the first 576 values
     bolus_ary = np.append(bolus_ary, 0)  # Append a zero at the end
 
@@ -204,6 +214,20 @@ def data_inverse_standardization(data, scaler):
     return data_inverse
 
 
+def data_inverse_standardization_paper(data, scaler):
+
+    # input data shape (samples, )
+    mean = scaler[0][0]
+    std = scaler[0][1]
+    data = np.array(data)
+    data = data.reshape(-1, 1)  # Reshape to 2D array for inverse transformation
+    data_inverse = data * std + mean  # Inverse standardization
+    data_inverse = data_inverse.flatten()  # Flatten back to 1D array
+
+    return data_inverse
+
+
+# ---------------- preprocessing functions for baseline model -------------------
 def data_preprocessing_baseline(
     data_type,
     folder_path_4days,
@@ -217,6 +241,7 @@ def data_preprocessing_baseline(
 
     # transfer sequence length to the number of units
     seq_len = int(seq_len / interval)  # Convert sequence length to the number of units
+    print(f"Sequence length in units: {seq_len}")
     # ensure ph is an integer
     ph = int(ph / interval)  # Convert ph to the number of units
 
@@ -304,6 +329,64 @@ def test_data_preprocessing_baseline(
     return test_loader
 
 
+def standardize_paper(data, scaler):
+    mean = scaler[0][0]
+    std = scaler[0][1]
+    data = np.array(data)
+    data = (data - mean) / std  # Standardize the data
+    return data
+
+
+def test_data_preprocessing_baseline_paper(
+    data_type, folder_path_1, p_num, seq_len, ph, interval, input_scalers, output_scaler
+):
+    # transfer sequence length to the number of units
+    seq_len = int(seq_len / interval)  # Convert sequence length to the number of units
+    print(f"Sequence length in units: {seq_len}")
+    # ensure ph is an integer
+    ph = int(ph / interval)  # Convert ph to the number of units
+    print(f"Ph in units: {ph}")
+
+    # get the data
+    test_data_1 = get_data(data_type, folder_path_1, p_num)
+
+    # extract features
+    input_data_1, output_data_1 = extract_features(test_data_1, ts=interval)
+
+    # standardize the data
+    cgm_scaled = standardize_paper(input_data_1["cgm"], input_scalers["CGM"])
+    carb_scaled = standardize_paper(input_data_1["carb_intake"], input_scalers["meal"])
+    basal_scaled = standardize_paper(
+        input_data_1["current_basal"], input_scalers["basal"]
+    )
+    bolus_scaled = standardize_paper(
+        input_data_1["current_bolus"], input_scalers["bolus"]
+    )
+
+    output_g = standardize_paper(output_data_1["G"], output_scaler["G"])
+
+    # construct input data
+    input_data_1_scaled = {
+        "cgm": cgm_scaled,
+        "current_bolus": bolus_scaled,
+        "current_basal": basal_scaled,
+        "carb_intake": carb_scaled,
+    }
+
+    # construct output data
+    output_data_1_scaled = {"G": output_g}
+
+    # construct dataset
+    x_test, y_test = select_build_sequence_data(
+        input_data_1_scaled, output_data_1_scaled, seq_len, ph
+    )
+
+    # create dataloader
+    test_loader = create_test_dataloader(x_test, y_test)
+
+    return test_loader
+
+
 def standardize_2_datasets(data_4days, data_30days):
     scalers = {}
     data_4days_scaled = {}
@@ -346,6 +429,48 @@ def standardize_val_data(data, scalers):
 
 
 def select_build_sequence_data(input_data, output_data, seq_len, ph):
+    # input data
+    # input cgm
+    input_select_cgm = select_data(input_data["cgm"], seq_len, ph, "cgm")
+    input_cgm_seq = build_sequence_data(input_select_cgm, seq_len)
+    # input carb intake
+    input_select_carb = select_data(input_data["carb_intake"], seq_len, ph, "input")
+    input_carb_seq = build_sequence_data(input_select_carb, seq_len)
+    # input current basal
+    input_select_basal = select_data(input_data["current_basal"], seq_len, ph, "input")
+    input_basal_seq = build_sequence_data(input_select_basal, seq_len)
+    # input current bolus
+    input_select_bolus = select_data(input_data["current_bolus"], seq_len, ph, "input")
+    input_bolus_seq = build_sequence_data(input_select_bolus, seq_len)
+
+    # output G
+    output_g = select_data(output_data["G"], seq_len, ph, "output")
+
+    print(f"Input data shape: {input_cgm_seq.shape}")
+    print(f"Output data shape: {output_g.shape}")
+
+    # # chech the output is right
+    # print(f"Input CGM time 0 value: {input_select_cgm[0]}")
+    # print(f"Output G time 0 value: {output_g[0]}")
+    # print(f"Input CGM time 60 value: {input_select_cgm[ph]}")
+
+    # construct x and y
+    x = np.stack(
+        (
+            input_cgm_seq,
+            input_carb_seq,
+            input_basal_seq,
+            input_bolus_seq,
+        ),
+        axis=-1,
+    )
+
+    y = output_g.reshape(-1, 1)
+
+    return x, y
+
+
+def select_build_sequence_data_paper(input_data, output_data, seq_len, ph):
     # input data
     # input cgm
     input_select_cgm = select_data(input_data["cgm"], seq_len, ph, "cgm")
