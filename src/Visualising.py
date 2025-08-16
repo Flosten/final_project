@@ -100,13 +100,21 @@ def plot_lr_1(train_loss, val_loss):
     Returns:
     fig, ax: Matplotlib figure and axes objects.
     """
+    xticks_num = 10
+
     fig, ax = plt.subplots(figsize=(8, 6))
     epochs = range(1, len(train_loss) + 1)
+
+    epochs_num = len(train_loss)
+    num = epochs_num // xticks_num
+    if num < 1:
+        num = 1
+    xticks = np.arange(0, epochs_num, num)
 
     ax.plot(epochs, train_loss, label="Training Loss", color="blue")
     ax.plot(epochs, val_loss, label="Validation Loss", color="orange")
 
-    ax.set_xticks(epochs)
+    ax.set_xticks(xticks)
     ax.set_xlabel("Epochs")
     ax.set_ylabel("Loss")
 
