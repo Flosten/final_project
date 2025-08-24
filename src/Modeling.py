@@ -1,3 +1,6 @@
+import os
+
+import matplotlib.pyplot as plt
 import numpy as np
 import torch
 import torch.nn as nn
@@ -321,10 +324,19 @@ class ProposedModel(nn.Module):
         self.lstm_basal_insulin = nn.LSTM(
             input_size, hidden_size, num_layers, batch_first=True, bidirectional=True
         )
+        self.lstm_physio_basal_insulin = nn.LSTM(
+            input_size, hidden_size, num_layers, batch_first=True, bidirectional=True
+        )
         self.lstm_bolus_insulin = nn.LSTM(
             input_size, hidden_size, num_layers, batch_first=True, bidirectional=True
         )
+        self.lstm_physio_bolus_insulin = nn.LSTM(
+            input_size, hidden_size, num_layers, batch_first=True, bidirectional=True
+        )
         self.lstm_meal = nn.LSTM(
+            input_size, hidden_size, num_layers, batch_first=True, bidirectional=True
+        )
+        self.lstm_physio_meal = nn.LSTM(
             input_size, hidden_size, num_layers, batch_first=True, bidirectional=True
         )
 
@@ -336,7 +348,16 @@ class ProposedModel(nn.Module):
 
         self.fc = nn.Linear(hidden_size * 2, output_size)
 
-    def forward(self, cgm, basal_insulin, bolus_insulin, meal):
+    def forward(
+        self,
+        cgm,
+        basal_insulin,
+        bolus_insulin,
+        meal,
+        physio_basal_insulin,
+        physio_bolus_insulin,
+        physio_meal,
+    ):
         """
         This function defines the forward pass of the proposed model.
 
@@ -352,6 +373,13 @@ class ProposedModel(nn.Module):
         out_basal_insulin, _ = self.lstm_basal_insulin(basal_insulin)
         out_bolus_insulin, _ = self.lstm_bolus_insulin(bolus_insulin)
         out_meal, _ = self.lstm_meal(meal)
+        out_physio_basal_insulin, _ = self.lstm_physio_basal_insulin(
+            physio_basal_insulin
+        )
+        out_physio_bolus_insulin, _ = self.lstm_physio_bolus_insulin(
+            physio_bolus_insulin
+        )
+        out_physio_meal, _ = self.lstm_physio_meal(physio_meal)
 
         out_cgm = out_cgm[
             :, -1, :
@@ -359,16 +387,42 @@ class ProposedModel(nn.Module):
         out_basal_insulin = out_basal_insulin[:, -1, :]
         out_bolus_insulin = out_bolus_insulin[:, -1, :]
         out_meal = out_meal[:, -1, :]
+        out_physio_basal_insulin = out_physio_basal_insulin[:, -1, :]
+        out_physio_bolus_insulin = out_physio_bolus_insulin[:, -1, :]
+        out_physio_meal = out_physio_meal[:, -1, :]
 
         # prior knowledge
         prior_cgm = torch.ones(cgm.size(0), 1, device=cgm.device)
         prior_insulin = basal_insulin[:, -1, :].mean(dim=1, keepdim=True)
-        prior_bolus_insulin = bolus_insulin[:, -1, :].mean(dim=1, keepdim=True)
+        prior_insulin_bolus = bolus_insulin[:, -1, :].mean(dim=1, keepdim=True)
         prior_meal = meal[:, -1, :].mean(dim=1, keepdim=True)
+        prior_physio_basal_insulin = physio_basal_insulin[:, -1, :].mean(
+            dim=1, keepdim=True
+        )
+        prior_physio_bolus_insulin = physio_bolus_insulin[:, -1, :].mean(
+            dim=1, keepdim=True
+        )
+        prior_physio_meal = physio_meal[:, -1, :].mean(dim=1, keepdim=True)
 
         # Concatenate the outputs
-        context = [out_cgm, out_basal_insulin, out_bolus_insulin, out_meal]
-        prior_knowledge = [prior_cgm, prior_insulin, prior_bolus_insulin, prior_meal]
+        context = [
+            out_cgm,
+            out_basal_insulin,
+            out_bolus_insulin,
+            out_meal,
+            out_physio_basal_insulin,
+            out_physio_bolus_insulin,
+            out_physio_meal,
+        ]
+        prior_knowledge = [
+            prior_cgm,
+            prior_insulin,
+            prior_insulin_bolus,
+            prior_meal,
+            prior_physio_basal_insulin,
+            prior_physio_bolus_insulin,
+            prior_physio_meal,
+        ]
 
         # channel attention
         weighted_context, atten_weights = self.channel_attention(
@@ -378,89 +432,6 @@ class ProposedModel(nn.Module):
         # fully connected layer
         output = self.fc(weighted_context)
         return output, atten_weights
-
-
-# # this is the one no basal insulin
-# class ProposedModel(nn.Module):
-#     """
-#     Our proposed model that combines multi-channel LSTM and channel attention.
-
-#     Args:
-#         input_size (int): Size of the input features.
-#         hidden_size (int): Size of the hidden layer.
-#         output_size (int): Size of the output layer.
-#         num_layers (int, optional): Number of LSTM layers. Default is 1.
-#     """
-
-#     def __init__(self, input_size, hidden_size, output_size, num_layers=1):
-#         super().__init__()
-#         self.input_size = input_size
-#         self.hidden_size = hidden_size
-#         self.output_size = output_size
-#         self.num_layers = num_layers
-#         self.lstm_cgm = nn.LSTM(
-#             input_size, hidden_size, num_layers, batch_first=True, bidirectional=True
-#         )
-#         self.lstm_basal_insulin = nn.LSTM(
-#             input_size, hidden_size, num_layers, batch_first=True, bidirectional=True
-#         )
-#         self.lstm_bolus_insulin = nn.LSTM(
-#             input_size, hidden_size, num_layers, batch_first=True, bidirectional=True
-#         )
-#         self.lstm_meal = nn.LSTM(
-#             input_size, hidden_size, num_layers, batch_first=True, bidirectional=True
-#         )
-
-#         # Channel attention layer
-#         self.channel_attention = ChannelAttention(hidden_size)
-
-#         # weights for different BG range
-#         self.weights = nn.Parameter(torch.tensor([5.0, 4.0, 3.0, 1.0]))
-
-#         self.fc = nn.Linear(hidden_size * 2, output_size)
-
-#     def forward(self, cgm, bolus_insulin, meal):
-#         """
-#         This function defines the forward pass of the proposed model.
-
-#         Args:
-#             cgm (torch.Tensor): Input tensor for past CGM data (batch_size, seq_length, input_size).
-#             insulin (torch.Tensor): Insulin data (batch_size, seq_length, input_size).
-#             meal (torch.Tensor): Input tensor for meal data (batch_size, seq_length, input_size).
-
-#         Returns:
-#             tuple: A tuple containing the output tensor and attention weights.
-#         """
-#         out_cgm, _ = self.lstm_cgm(cgm)
-#         # out_basal_insulin, _ = self.lstm_basal_insulin(basal_insulin)
-#         out_bolus_insulin, _ = self.lstm_bolus_insulin(bolus_insulin)
-#         out_meal, _ = self.lstm_meal(meal)
-
-#         out_cgm = out_cgm[
-#             :, -1, :
-#         ]  # Get the last time step output shape (batch_size, hidden_size * 2)
-#         # out_basal_insulin = out_basal_insulin[:, -1, :]
-#         out_bolus_insulin = out_bolus_insulin[:, -1, :]
-#         out_meal = out_meal[:, -1, :]
-
-#         # prior knowledge
-#         prior_cgm = torch.ones(cgm.size(0), 1, device=cgm.device)
-#         # prior_insulin = basal_insulin[:, -1, :].mean(dim=1, keepdim=True)
-#         prior_bolus_insulin = bolus_insulin[:, -1, :].mean(dim=1, keepdim=True)
-#         prior_meal = meal[:, -1, :].mean(dim=1, keepdim=True)
-
-#         # Concatenate the outputs
-#         context = [out_cgm, out_bolus_insulin, out_meal]
-#         prior_knowledge = [prior_cgm, prior_bolus_insulin, prior_meal]
-
-#         # channel attention
-#         weighted_context, atten_weights = self.channel_attention(
-#             context, prior_knowledge
-#         )
-
-#         # fully connected layer
-#         output = self.fc(weighted_context)
-#         return output, atten_weights
 
 
 def min_max_normalization(data):
@@ -473,22 +444,14 @@ def min_max_normalization(data):
 def physiological_layer(input_seq, lamda, kernel_size):
     """
     Applies the physiological layer to preprocess the insulin and meal data.
-
-    Args:
-        input_seq (torch.Tensor): The input sequence (insulin & meal) [batch_size, seq_length].
-        lamda (float): The peak time of the physiological response (peak time/ time interval).
-        kernel_size (int): The time window size for the physiological model.
-
-    Returns:
-        torch.Tensor: The processed output sequence.
     """
     # Create a kernel based on the physiological model
     t = torch.arange(0, kernel_size).float()
     kernel = (t / lamda**2) * torch.exp(-t / lamda)
     kernel = kernel / torch.sum(kernel)
-    kernel = kernel.view(1, 1, -1).to(
-        input_seq.device
-    )  # Reshape to (1, 1, kernel_size)
+    kernel = kernel.view(1, 1, -1).to(input_seq.device)  # (1,1,K)
+
+    kernel = torch.flip(kernel, dims=[-1])
 
     input_seq = input_seq.float()
     input_seq = input_seq.unsqueeze(1)  # Add channel dimension
@@ -497,30 +460,13 @@ def physiological_layer(input_seq, lamda, kernel_size):
     padding = int(kernel_size) - 1
     input_seq = F.pad(input_seq, (padding, 0), mode="constant", value=0)
 
-    # Apply the convolution
+    # Apply the convolution (strict convolution after kernel flip)
     output_seq = F.conv1d(input_seq, kernel)
     output_seq = output_seq.squeeze(1)  # Remove channel dimension
 
     output_seq = min_max_normalization(output_seq)
 
     return output_seq
-
-
-# def physiological_layer(input_seq, lamda, kernel_size):
-#     kernel_size = int(kernel_size)
-#     t = torch.arange(kernel_size - 1, -1, -1).float()  # 时间反向
-#     kernel = (t / lamda**2) * torch.exp(-t / lamda)
-#     kernel = kernel / kernel.sum()
-#     kernel = kernel.view(1, 1, -1).to(input_seq.device)
-
-#     input_seq = input_seq.float().unsqueeze(1)  # [B, 1, T]
-#     input_seq = F.pad(
-#         input_seq, (kernel_size - 1, 0), mode="constant", value=0
-#     )  # 左侧填充
-
-#     output_seq = F.conv1d(input_seq, kernel)
-#     output_seq = output_seq.squeeze(1)
-#     return output_seq
 
 
 # proposed model training function
@@ -580,7 +526,7 @@ def proposed_model_train(
             # Apply physiological layer to insulin and meal
             # basal_insulin = basal_insulin.squeeze(2)
             basal_insulin_processed = physiological_layer(
-                basal_insulin, tp_insulin_basal, kernel_size_basal_insulin
+                basal_insulin, tp_insulin_basal, 1000
             )
             basal_insulin_preprocessed = basal_insulin_processed.unsqueeze(
                 2
@@ -588,29 +534,35 @@ def proposed_model_train(
 
             # bolus_insulin = bolus_insulin.squeeze(2)
             bolus_insulin_processed = physiological_layer(
-                bolus_insulin, tp_insulin_bolus, kernel_size_bolus_insulin
+                bolus_insulin, tp_insulin_bolus, 1000
             )
             bolus_insulin_preprocessed = bolus_insulin_processed.unsqueeze(
                 2
             )  # (batch, seq_len) -> (batch, seq_len, 1)
 
             # meal = meal.squeeze(2)  # (batch, seq_len, 1)
-            meal_processed = physiological_layer(meal, tp_meal, kernel_size_carb_intake)
+            meal_processed = physiological_layer(meal, tp_meal, 1000)
             meal_preprocessed = meal_processed.unsqueeze(
                 2
             )  # (batch, seq_len) -> (batch, seq_len, 1)
 
             # preprocess the inputs cgm
             cgm = cgm.unsqueeze(2)  # (batch, seq_len) -> (batch, seq_len, 1)
+            meal = meal.unsqueeze(2)  # (batch, seq_len) -> (batch, seq_len, 1)
+            basal_insulin = basal_insulin.unsqueeze(2)
+            bolus_insulin = bolus_insulin.unsqueeze(2)
 
             # forward pass
             pred, att_weights = model(
                 cgm,
-                basal_insulin_preprocessed,  # use the last time step
-                bolus_insulin_preprocessed,  # use the last time step
-                meal_preprocessed,  # use the last time step
+                basal_insulin,
+                bolus_insulin,
+                meal,
+                basal_insulin_preprocessed,
+                bolus_insulin_preprocessed,
+                meal_preprocessed,
             )
-            # -------------------修改一下loss 先测试作用-------------------
+            # -------------------loss function-------------------
             loss = com_loss_function(pred, y_norm, y_raw, model, alpha, beta)
             # loss = nn.MSELoss()(pred, y_norm)  # using MSE loss for training
             loss_2 = F.mse_loss(pred, y_norm)  # for debugging and monitoring
@@ -650,7 +602,7 @@ def proposed_model_train(
                 # Apply physiological layer to insulin and meal
                 # basal_insulin_val = basal_insulin_val.squeeze(2)
                 basal_insulin_processed_val = physiological_layer(
-                    basal_insulin_val, tp_insulin_basal, kernel_size_basal_insulin
+                    basal_insulin_val, tp_insulin_basal, 1000
                 )
                 basal_insulin_preprocessed_val = basal_insulin_processed_val.unsqueeze(
                     2
@@ -658,16 +610,14 @@ def proposed_model_train(
 
                 # bolus_insulin_val = bolus_insulin_val.squeeze(2)
                 bolus_insulin_processed_val = physiological_layer(
-                    bolus_insulin_val, tp_insulin_bolus, kernel_size_bolus_insulin
+                    bolus_insulin_val, tp_insulin_bolus, 1000
                 )
                 bolus_insulin_preprocessed_val = bolus_insulin_processed_val.unsqueeze(
                     2
                 )  # (batch, seq_len) -> (batch, seq_len, 1)
 
                 # meal_val = meal_val.squeeze(2)
-                meal_processed_val = physiological_layer(
-                    meal_val, tp_meal, kernel_size_carb_intake
-                )
+                meal_processed_val = physiological_layer(meal_val, tp_meal, 1000)
                 meal_preprocessed_val = meal_processed_val.unsqueeze(
                     2
                 )  # (batch, seq_len) -> (batch, seq_len, 1)
@@ -676,13 +626,19 @@ def proposed_model_train(
                 cgm_val = cgm_val.unsqueeze(
                     2
                 )  # (batch, seq_len) -> (batch, seq_len, 1)
+                meal_val = meal_val.unsqueeze(2)
+                basal_insulin_val = basal_insulin_val.unsqueeze(2)
+                bolus_insulin_val = bolus_insulin_val.unsqueeze(2)
 
                 # forward pass
                 pred_val, _ = model(
                     cgm_val,
-                    basal_insulin_preprocessed_val,  # use the last time step
-                    bolus_insulin_preprocessed_val,  # use the last time step
-                    meal_preprocessed_val,  # use the last time step
+                    basal_insulin_val,
+                    bolus_insulin_val,
+                    meal_val,
+                    basal_insulin_preprocessed_val,
+                    bolus_insulin_preprocessed_val,
+                    meal_preprocessed_val,
                 )
 
                 loss_val = com_loss_function(
@@ -710,190 +666,228 @@ def proposed_model_train(
     return model, fig, ax
 
 
-# def proposed_model_train_no_basal(
-#     model,
-#     train_dataloader,
-#     val_dataloader,
-#     optimizer,
-#     epochs,
-#     alpha,  # loss weight for variance term
-#     beta,  # loss weight for regularization term
-#     seq_len_carb_intake,  # sequence length for carb intake
-#     seq_len_basal_insulin,  # sequence length for basal insulin
-#     seq_len_bolus_insulin,  # sequence length for bolus insulin
-#     tp_insulin_basal,  # peak time for basal insulin response
-#     tp_insulin_bolus,  # peak time for bolus insulin response
-#     tp_meal,  # peak time for meal response
-#     interval,  # time interval for the physiological model
-#     device,
-# ):
-#     train_losses = []
-#     train_losses_2 = []  # for debugging and monitoring
-#     val_losses = []
-#     val_losses_2 = []  # for debugging and monitoring
-#     model = model.to(device)
-#     # physiological layer for insulin and meal
-#     tp_insulin_basal = tp_insulin_basal / interval  # convert peak time to time steps
-#     tp_insulin_bolus = tp_insulin_bolus / interval  # convert peak time to time steps
-#     tp_meal = tp_meal / interval  # convert peak time to time steps
-#     # kernel size for basal insulin and bolus insulin
-#     kernel_size_basal_insulin = seq_len_basal_insulin / interval
-#     kernel_size_bolus_insulin = seq_len_bolus_insulin / interval
-#     kernel_size_carb_intake = seq_len_carb_intake / interval
+def get_peak_time(
+    patient_num,
+    var_type,  # 'basal', 'bolus', 'meal'
+):
+    data_type = "test"
+    data = prep.get_data(data_type, var_type, patient_num)
+    input_data, output_data = prep.extract_features(data)
+    idx = 0
 
-#     # training loop
-#     for epoch in range(epochs):
-#         model.train()
-#         train_loss = 0.0
-#         train_loss_2 = 0.0  # for debugging and monitoring
-#         all_predictions = []
-#         all_truths = []
-#         for x, y_norm, y_raw in tqdm.tqdm(
-#             train_dataloader, desc=f"Epoch {epoch + 1}/{epochs}"
-#         ):
-#             optimizer.zero_grad()
-#             cgm = x["cgm"]
-#             meal = x["carb_intake"]
-#             basal_insulin = x["current_basal"]
-#             bolus_insulin = x["current_bolus"]
-#             cgm = cgm.to(model.weights.device)
-#             basal_insulin = basal_insulin.to(model.weights.device)
-#             bolus_insulin = bolus_insulin.to(model.weights.device)
-#             meal = meal.to(model.weights.device)
-#             y_norm = y_norm.to(model.weights.device)
-#             y_raw = y_raw.to(model.weights.device)
+    if var_type == "ts-dtI":  # "bolus insulin"
+        idx = output_data["G"].index(min(output_data["G"]))
+    elif var_type == "ts-dtM":  # "carb intake"
+        idx = output_data["G"].index(max(output_data["G"]))
 
-#             # Apply physiological layer to insulin and meal
-#             # basal_insulin = basal_insulin.squeeze(2)
-#             basal_insulin_processed = physiological_layer(
-#                 basal_insulin, tp_insulin_basal, kernel_size_basal_insulin
-#             )
-#             basal_insulin_preprocessed = basal_insulin_processed.unsqueeze(
-#                 2
-#             )  # (batch, seq_len) -> (batch, seq_len, 1)
+    peak_time = (idx - (288 / 2)) * 5  # convert to minutes
 
-#             # bolus_insulin = bolus_insulin.squeeze(2)
-#             bolus_insulin_processed = physiological_layer(
-#                 bolus_insulin, tp_insulin_bolus, kernel_size_bolus_insulin
-#             )
-#             bolus_insulin_preprocessed = bolus_insulin_processed.unsqueeze(
-#                 2
-#             )  # (batch, seq_len) -> (batch, seq_len, 1)
+    return int(peak_time)
 
-#             # meal = meal.squeeze(2)  # (batch, seq_len, 1)
-#             meal_processed = physiological_layer(meal, tp_meal, kernel_size_carb_intake)
-#             meal_preprocessed = meal_processed.unsqueeze(
-#                 2
-#             )  # (batch, seq_len) -> (batch, seq_len, 1)
 
-#             # preprocess the inputs cgm
-#             cgm = cgm.unsqueeze(2)  # (batch, seq_len) -> (batch, seq_len, 1)
+def proposed_model_train_for_99(
+    model,
+    train_dataloader,
+    val_dataloader,
+    optimizer,
+    epochs,
+    alpha,
+    beta,
+    seq_len_carb_intake,
+    seq_len_basal_insulin,
+    seq_len_bolus_insulin,
+    tp_insulin_basal,
+    tp_insulin_bolus,
+    tp_meal,
+    interval,
+    device,
+    patience: int = 3,
+    min_delta: float = 0.0,
+    use_plateau_scheduler: bool = True,
+    scheduler_factor: float = 0.5,
+    scheduler_patience: int = 2,
+    scheduler_min_lr: float = 1e-6,
+):
+    def _to_int_ge1(x):
+        return max(int(round(float(x))), 1)
 
-#             # forward pass
-#             pred, att_weights = model(
-#                 cgm,
-#                 # basal_insulin_preprocessed,  # use the last time step
-#                 bolus_insulin_preprocessed,  # use the last time step
-#                 meal_preprocessed,  # use the last time step
-#             )
-#             # -------------------修改一下loss 先测试作用-------------------
-#             # loss = com_loss_function(pred, y_norm, y_raw, model, alpha, beta)
-#             loss = nn.MSELoss()(pred, y_norm)  # using MSE loss for training
-#             loss_2 = F.mse_loss(pred, y_norm)  # for debugging and monitoring
-#             loss.backward()
-#             optimizer.step()
+    # default device
+    device = torch.device(device)
+    model = model.to(device)
 
-#             train_loss += loss.item()
-#             train_loss_2 += loss_2.item()  # for debugging and monitoring
-#         train_loss /= len(train_dataloader)
-#         train_losses.append(train_loss)
-#         train_loss_2 /= len(train_dataloader)
-#         train_losses_2.append(train_loss_2)
+    # transform peak times and sequence lengths to "steps"
+    tp_insulin_basal = float(tp_insulin_basal) / float(interval)
+    tp_insulin_bolus = float(tp_insulin_bolus) / float(interval)
+    tp_meal = float(tp_meal) / float(interval)
 
-#         print(
-#             f"Epoch {epoch + 1}/{epochs}, Train Loss: {train_loss:.4f}, Train MSE: {train_loss_2:.4f}"
-#         )
+    # kernel size for physiological layers
+    kernel_size_basal_insulin = _to_int_ge1(
+        float(seq_len_basal_insulin) / float(interval)
+    )
+    kernel_size_bolus_insulin = _to_int_ge1(
+        float(seq_len_bolus_insulin) / float(interval)
+    )
+    kernel_size_carb_intake = _to_int_ge1(float(seq_len_carb_intake) / float(interval))
 
-#         # validation loop
-#         model.eval()
-#         val_loss = 0.0
-#         val_loss_2 = 0.0  # for debugging and monitoring
-#         with torch.no_grad():
-#             for x_val, y_norm_val, y_raw_val in val_dataloader:
-#                 # extract the inputs and targets
-#                 cgm_val = x_val["cgm"]
-#                 meal_val = x_val["carb_intake"]
-#                 basal_insulin_val = x_val["current_basal"]
-#                 bolus_insulin_val = x_val["current_bolus"]
+    # record the losses
+    train_losses, train_losses_2 = [], []
+    val_losses, val_losses_2 = [], []
 
-#                 cgm_val = cgm_val.to(model.weights.device)
-#                 basal_insulin_val = basal_insulin_val.to(model.weights.device)
-#                 bolus_insulin_val = bolus_insulin_val.to(model.weights.device)
-#                 meal_val = meal_val.to(model.weights.device)
-#                 y_norm_val = y_norm_val.to(model.weights.device)
-#                 y_raw_val = y_raw_val.to(model.weights.device)
+    # hyperparameters for early stopping
+    best_val = float("inf")
+    best_state = None
+    stale_cnt = 0
+    stopped_early = False
 
-#                 # Apply physiological layer to insulin and meal
-#                 # basal_insulin_val = basal_insulin_val.squeeze(2)
-#                 basal_insulin_processed_val = physiological_layer(
-#                     basal_insulin_val, tp_insulin_basal, kernel_size_basal_insulin
-#                 )
-#                 basal_insulin_preprocessed_val = basal_insulin_processed_val.unsqueeze(
-#                     2
-#                 )  # (batch, seq_len) -> (batch, seq_len, 1)
+    # scheduler setup
+    scheduler = None
+    if use_plateau_scheduler:
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+            optimizer,
+            mode="min",
+            factor=scheduler_factor,
+            patience=scheduler_patience,
+            min_lr=scheduler_min_lr,
+            verbose=True,
+        )
 
-#                 # bolus_insulin_val = bolus_insulin_val.squeeze(2)
-#                 bolus_insulin_processed_val = physiological_layer(
-#                     bolus_insulin_val, tp_insulin_bolus, kernel_size_bolus_insulin
-#                 )
-#                 bolus_insulin_preprocessed_val = bolus_insulin_processed_val.unsqueeze(
-#                     2
-#                 )  # (batch, seq_len) -> (batch, seq_len, 1)
+    for epoch in range(epochs):
+        # begin training
+        model.train()
+        running_train_loss = 0.0
+        running_train_mse = 0.0
 
-#                 # meal_val = meal_val.squeeze(2)
-#                 meal_processed_val = physiological_layer(
-#                     meal_val, tp_meal, kernel_size_carb_intake
-#                 )
-#                 meal_preprocessed_val = meal_processed_val.unsqueeze(
-#                     2
-#                 )  # (batch, seq_len) -> (batch, seq_len, 1)
+        for x, y_norm, y_raw in tqdm.tqdm(
+            train_dataloader, desc=f"Epoch {epoch+1}/{epochs}"
+        ):
+            optimizer.zero_grad()
 
-#                 # preprocess the inputs cgm
-#                 cgm_val = cgm_val.unsqueeze(
-#                     2
-#                 )  # (batch, seq_len) -> (batch, seq_len, 1)
+            cgm = x["cgm"].to(device)
+            meal = x["carb_intake"].to(device)
+            basal_insulin = x["current_basal"].to(device)
+            bolus_insulin = x["current_bolus"].to(device)
+            y_norm = y_norm.to(device)
+            y_raw = y_raw.to(device)
 
-#                 # forward pass
-#                 pred_val, _ = model(
-#                     cgm_val,
-#                     # basal_insulin_preprocessed_val,  # use the last time step
-#                     bolus_insulin_preprocessed_val,  # use the last time step
-#                     meal_preprocessed_val,  # use the last time step
-#                 )
+            # physiological layer for insulin and meal
+            bi = physiological_layer(
+                basal_insulin, tp_insulin_basal, kernel_size_basal_insulin
+            ).unsqueeze(2)
+            boli = physiological_layer(
+                bolus_insulin, tp_insulin_bolus, kernel_size_bolus_insulin
+            ).unsqueeze(2)
+            meal_p = physiological_layer(
+                meal, tp_meal, kernel_size_carb_intake
+            ).unsqueeze(2)
 
-#                 # loss_val = com_loss_function(
-#                 #     pred_val, y_norm_val, y_raw_val, model, alpha, beta
-#                 # )
-#                 loss_val = nn.MSELoss()(
-#                     pred_val, y_norm_val
-#                 )  # using MSE loss for validation
-#                 loss_val_2 = F.mse_loss(
-#                     pred_val, y_norm_val
-#                 )  # for debugging and monitoring
-#                 val_loss += loss_val.item()
-#                 val_loss_2 += loss_val_2.item()  # for debugging and monitoring
-#         val_loss /= len(val_dataloader)
-#         val_losses.append(val_loss)
-#         val_loss_2 /= len(val_dataloader)
-#         val_losses_2.append(val_loss_2)
-#         print(
-#             f"Epoch {epoch + 1}/{epochs}, Val Loss: {val_loss:.4f}, Val MSE Loss: {val_loss_2:.4f}"
-#         )
+            # preprocess the inputs cgm
+            cgm = cgm.unsqueeze(2)
 
-#     # print the learning curves
-#     fig, ax = vis.plot_lr_2(train_losses, train_losses_2, val_losses, val_losses_2)
+            # perform forward pass
+            pred, att_weights = model(cgm, bi, boli, meal_p)
 
-#     return model, fig, ax
+            # loss calculation
+            loss = com_loss_function(pred, y_norm, y_raw, model, alpha, beta)
+            # loss = nn.MSELoss()(pred, y_norm)
+            loss_2 = F.mse_loss(pred, y_norm)  # for debugging and monitoring
+
+            # backward pass and optimization
+            loss.backward()
+            optimizer.step()
+
+            running_train_loss += loss.item()
+            running_train_mse += loss_2.item()
+
+        # calculate average loss for the epoch
+        epoch_train_loss = running_train_loss / max(len(train_dataloader), 1)
+        epoch_train_mse = running_train_mse / max(len(train_dataloader), 1)
+        train_losses.append(epoch_train_loss)
+        train_losses_2.append(epoch_train_mse)
+        print(
+            f"Epoch {epoch+1}/{epochs}, Train Loss: {epoch_train_loss:.4f}, Train MSE: {epoch_train_mse:.4f}"
+        )
+
+        # -------------------- validation --------------------
+        model.eval()
+        running_val_loss = 0.0
+        running_val_mse = 0.0
+
+        with torch.no_grad():
+            for x_val, y_norm_val, y_raw_val in val_dataloader:
+                cgm_v = x_val["cgm"].to(device)
+                meal_v_in = x_val["carb_intake"].to(device)
+                basal_insulin_v = x_val["current_basal"].to(device)
+                bolus_insulin_v = x_val["current_bolus"].to(device)
+                y_norm_v = y_norm_val.to(device)
+                y_raw_v = y_raw_val.to(device)
+
+                bi_v = physiological_layer(
+                    basal_insulin_v, tp_insulin_basal, kernel_size_basal_insulin
+                ).unsqueeze(2)
+                boli_v = physiological_layer(
+                    bolus_insulin_v, tp_insulin_bolus, kernel_size_bolus_insulin
+                ).unsqueeze(2)
+                meal_v = physiological_layer(
+                    meal_v_in, tp_meal, kernel_size_carb_intake
+                ).unsqueeze(2)
+                cgm_v = cgm_v.unsqueeze(2)
+
+                pred_v, _ = model(cgm_v, bi_v, boli_v, meal_v)
+
+                lv = com_loss_function(pred_v, y_norm_v, y_raw_v, model, alpha, beta)
+                # lv = nn.MSELoss()(pred_v, y_norm_v)
+                lv_2 = F.mse_loss(pred_v, y_norm_v)
+
+                running_val_loss += lv.item()
+                running_val_mse += lv_2.item()
+
+        epoch_val_loss = running_val_loss / max(len(val_dataloader), 1)
+        epoch_val_mse = running_val_mse / max(len(val_dataloader), 1)
+        val_losses.append(epoch_val_loss)
+        val_losses_2.append(epoch_val_mse)
+        print(
+            f"Epoch {epoch+1}/{epochs}, Val Loss: {epoch_val_loss:.4f}, Val MSE Loss: {epoch_val_mse:.4f}"
+        )
+
+        # scheduler step
+        if scheduler is not None:
+            scheduler.step(epoch_val_loss)
+
+        # -------------------- early stopping --------------------
+        if_improved = epoch_val_loss < (best_val - float(min_delta))
+
+        if if_improved:
+            best_val = epoch_val_loss
+            stale_cnt = 0
+            best_state = {
+                k: v.detach().cpu().clone() for k, v in model.state_dict().items()
+            }
+        else:
+            if (epoch + 1) > 25:  # start counting after 25 epochs
+                stale_cnt += 1
+                if stale_cnt >= patience:
+                    stopped_early = True
+                    print(
+                        f"Early stopping triggered at epoch {epoch+1} (best val loss: {best_val:.6f})."
+                    )
+                    break
+
+    # -------------------- load best model state --------------------
+    if best_state is not None:
+        model.load_state_dict(best_state)
+        model.to(device)
+
+    if not stopped_early:
+        print(f"Training finished all {epochs} epochs.")
+    else:
+        print(
+            f"Training stopped early at epoch {epoch+1} (best val loss: {best_val:.6f})."
+        )
+
+    # plot the learning curves
+    fig, ax = vis.plot_lr_2(train_losses, train_losses_2, val_losses, val_losses_2)
+
+    return model, fig, ax
 
 
 def exp_smoothing(data, alpha):
@@ -966,29 +960,35 @@ def proposed_model_eval(
             # Apply physiological layer to insulin and meal
             # basal_insulin = basal_insulin.squeeze(2)
             basal_insulin_processed = physiological_layer(
-                basal_insulin, tp_insulin_basal, kernel_size_basal_insulin
+                basal_insulin, tp_insulin_basal, 1000
             )
             basal_insulin_preprocessed = basal_insulin_processed.unsqueeze(2)
 
             # bolus_insulin = bolus_insulin.squeeze(2)
             bolus_insulin_processed = physiological_layer(
-                bolus_insulin, tp_insulin_bolus, kernel_size_bolus_insulin
+                bolus_insulin, tp_insulin_bolus, 1000
             )
             bolus_insulin_preprocessed = bolus_insulin_processed.unsqueeze(2)
 
             # meal = meal.squeeze(2)
-            meal_processed = physiological_layer(meal, tp_meal, kernel_size_carb_intake)
+            meal_processed = physiological_layer(meal, tp_meal, 1000)
             meal_preprocessed = meal_processed.unsqueeze(2)
 
             # preprocess the inputs cgm
             cgm = cgm.unsqueeze(2)  # (batch, seq_len) -> (batch, seq_len, 1)
+            meal = meal.unsqueeze(2)
+            basal_insulin = basal_insulin.unsqueeze(2)
+            bolus_insulin = bolus_insulin.unsqueeze(2)
 
             # forward pass
             pred, attn_weights = model(
                 cgm,
-                basal_insulin_preprocessed,  # use the last time step
-                bolus_insulin_preprocessed,  # use the last time step
-                meal_preprocessed,  # use the last time step
+                basal_insulin,
+                bolus_insulin,
+                meal,
+                basal_insulin_preprocessed,
+                bolus_insulin_preprocessed,
+                meal_preprocessed,
             )
             predictions.append(pred)
             truths.append(y_norm)
@@ -1000,7 +1000,7 @@ def proposed_model_eval(
     # inverse standardization
     predictions = prep.data_inverse_standardization(predictions, scaler)
     # predicitons = exp_smoothing(predictions, alpha=0.2)  # apply exponential smoothing
-    predictions = gaussian_filter1d(predictions, sigma=2)  # apply Gaussian filter
+    predictions = gaussian_filter1d(predictions, sigma=1)  # apply Gaussian filter
     truths = prep.data_inverse_standardization(truths, scaler)
 
     # visualize the predictions
@@ -1032,313 +1032,9 @@ def proposed_model_eval(
     )
 
 
-# def proposed_model_eval_no_basal(
-#     model,
-#     test_dataloader,
-#     tp_insulin_basal,
-#     tp_insulin_bolus,
-#     tp_meal,
-#     seq_len_carb_intake,
-#     seq_len_basal_insulin,
-#     seq_len_bolus_insulin,
-#     interval,
-#     scaler,
-#     device,
-#     ticks_per_day,
-#     time_steps,
-# ):
-#     """
-#     Evaluate the proposed model on the test dataset.
-
-#     Args:
-#         model (ProposedModel): The trained model.
-#         test_dataloader (torch.utils.data.DataLoader): DataLoader for the test dataset.
-#         tp_insulin (float): Peak time for insulin response.
-#         tp_meal (float): Peak time for meal response.
-#         kernel_size (int): Time window size for the physiological model.
-
-#     Returns:
-#         list: List of predictions for the test dataset.
-#     """
-#     model = model.to(device)
-#     model.eval()
-#     predictions = []
-#     truths = []
-#     attention_weights = []
-#     # physiological layer for insulin and meal
-#     tp_insulin_basal = tp_insulin_basal / interval  # convert peak time to time steps
-#     tp_insulin_bolus = tp_insulin_bolus / interval  # convert peak time to time steps
-#     tp_meal = tp_meal / interval  # convert peak time to time steps
-
-#     # kernel size for basal insulin and bolus insulin
-#     kernel_size_basal_insulin = seq_len_basal_insulin / interval
-#     kernel_size_bolus_insulin = seq_len_bolus_insulin / interval
-#     kernel_size_carb_intake = seq_len_carb_intake / interval
-
-#     with torch.no_grad():
-#         for x, y_norm, y_raw in test_dataloader:
-#             # extract the inputs and targets
-#             cgm = x["cgm"]
-#             meal = x["carb_intake"]
-#             basal_insulin = x["current_basal"]
-#             bolus_insulin = x["current_bolus"]
-
-#             # move the inputs and targets to the device
-#             cgm = cgm.to(model.weights.device)
-#             basal_insulin = basal_insulin.to(model.weights.device)
-#             bolus_insulin = bolus_insulin.to(model.weights.device)
-#             meal = meal.to(model.weights.device)
-#             y_norm = y_norm.to(model.weights.device)
-#             y_raw = y_raw.to(model.weights.device)
-
-#             # Apply physiological layer to insulin and meal
-#             # basal_insulin = basal_insulin.squeeze(2)
-#             basal_insulin_processed = physiological_layer(
-#                 basal_insulin, tp_insulin_basal, kernel_size_basal_insulin
-#             )
-#             basal_insulin_preprocessed = basal_insulin_processed.unsqueeze(2)
-
-#             # bolus_insulin = bolus_insulin.squeeze(2)
-#             bolus_insulin_processed = physiological_layer(
-#                 bolus_insulin, tp_insulin_bolus, kernel_size_bolus_insulin
-#             )
-#             bolus_insulin_preprocessed = bolus_insulin_processed.unsqueeze(2)
-
-#             # meal = meal.squeeze(2)
-#             meal_processed = physiological_layer(meal, tp_meal, kernel_size_carb_intake)
-#             meal_preprocessed = meal_processed.unsqueeze(2)
-
-#             # preprocess the inputs cgm
-#             cgm = cgm.unsqueeze(2)  # (batch, seq_len) -> (batch, seq_len, 1)
-
-#             # forward pass
-#             pred, attn_weights = model(
-#                 cgm,
-#                 # basal_insulin_preprocessed,  # use the last time step
-#                 bolus_insulin_preprocessed,  # use the last time step
-#                 meal_preprocessed,  # use the last time step
-#             )
-#             predictions.append(pred)
-#             truths.append(y_norm)
-#             attention_weights.append(attn_weights)
-#     predictions = torch.cat(predictions, dim=0).cpu().numpy().flatten().tolist()
-#     truths = torch.cat(truths, dim=0).cpu().numpy().flatten().tolist()
-#     attention_weights = torch.cat(attention_weights, dim=0).cpu().numpy()
-
-#     # inverse standardization
-#     predictions = prep.data_inverse_standardization(predictions, scaler)
-#     truths = prep.data_inverse_standardization(truths, scaler)
-
-#     # visualize the predictions
-#     fig, ax = vis.plot_pred_visualisation(
-#         predictions, truths, ticks_per_day, time_steps
-#     )
-
-#     # plot thresholds
-#     fig_threshold, ax_threshold = vis.plot_pred_threshold_visualisation(
-#         predictions, truths, ticks_per_day, time_steps
-#     )
-
-#     # apply alarm strategy
-#     hypo_threshold = 70
-#     hyper_threshold = 180
-#     pred_alarms = alarm_strategy(predictions, hypo_threshold, hyper_threshold)
-#     truth_alarms = alarm_strategy(truths, hypo_threshold, hyper_threshold)
-
-#     return (
-#         predictions,
-#         truths,
-#         pred_alarms,
-#         truth_alarms,
-#         attention_weights,
-#         fig,
-#         ax,
-#         fig_threshold,
-#         ax_threshold,
-#     )
-
-
-# def identify_ranges(bg_values, weights):
-#     """
-#     Identify the ranges of blood glucose values and apply weights.
-
-#     Args:
-#         bg_values (torch.Tensor): Blood glucose values (batch_size, 1).
-#         weights (torch.Tensor): Weights for different ranges.
-
-#     Returns:
-#         torch.Tensor: Weights corresponding to the identified ranges (batch_size, 1).
-#     """
-
-#     # Identify ranges based on the bg_values and thresholds
-#     con0 = (bg_values < 70).long()
-#     con1 = (bg_values > 180).long()
-#     con2 = ((bg_values >= 70) & (bg_values <= 180)).long()
-
-#     # sum the weighted conditions
-#     ranges = con0 * 0 + con1 * 1 + con2 * 2
-#     # Apply weights to the ranges
-#     get_weights = weights[ranges]
-
-#     return get_weights
-
-
-# def com_loss_function(pred, truth, ori_truth, model, alpha=0.5, beta=0.2):
-#     """
-#     Custom loss function for the proposed model.
-
-#     Args:
-#         pred (torch.Tensor): Model predictions (batch_size, 1).
-#         truth (torch.Tensor): Ground truth values (batch_size, 1).
-#         model (ProposedModel): The model.
-#         alpha (float): Weight for the variance term.
-#         beta (float): Weight for the regularization term.
-
-#     Returns:
-#         torch.Tensor: Computed loss value.
-#     """
-#     # set a fixed weight for the ranges
-#     fixed_weights = torch.tensor([2.0, 1.2, 1.5], device=model.weights.device)
-
-#     # w_t = identify_ranges(bg_values=ori_truth, weights=model.weights)  # (batch_size, 1)
-#     w_t = identify_ranges(bg_values=ori_truth, weights=fixed_weights).unsqueeze(
-#         1
-#     )  # (batch_size, 1)
-
-#     # calculate the weighted mean squared error
-#     l_prd = (w_t * (pred - truth) ** 2).mean()  # (batch_size, 1)
-
-#     # calculate the weightes variance
-#     delta_pred = pred[1:, :] - pred[:-1, :]  # (batch_size-1, 1)
-#     delta_truth = truth[1:, :] - truth[:-1, :]  # (batch_size-1, 1)
-#     l_var = (w_t[1:, :] * (delta_pred - delta_truth) ** 2).mean()  # (batch_size, 1)
-
-#     # calculate the regularization term
-#     w_prior = torch.tensor([2.0, 1.2, 1.5], device=model.weights.device)
-#     l_reg = F.mse_loss(model.weights, w_prior)
-
-#     # calculate the final loss
-#     total_loss = l_prd + alpha * l_var + beta * l_reg
-
-#     return total_loss
-
-
-# # ---- 平滑权重：随偏离[low, high]的距离连续增加 ----
-# def smooth_range_weight(bg, low=70.0, high=180.0, k=0.03, w_in=1.0, w_out=2.0):
-#     """
-#     bg: (batch, 1)
-#     返回: (batch, 1) in [w_in, w_out)
-#     """
-#     d_low = F.relu(low - bg)
-#     d_high = F.relu(bg - high)
-#     d = d_low + d_high
-#     w = w_in + (w_out - w_in) * torch.tanh(k * d)
-#     return w
-
-
-# # ---- Huber 与 非对称 Huber ----
-# def huber_loss(e, delta=10.0):
-#     """
-#     e = pred - truth
-#     """
-#     abs_e = torch.abs(e)
-#     quad = (
-#         0.5
-#         * torch.minimum(abs_e, torch.tensor(delta, device=e.device, dtype=e.dtype)) ** 2
-#     )
-#     lin = delta * (
-#         abs_e
-#         - torch.minimum(abs_e, torch.tensor(delta, device=e.device, dtype=e.dtype))
-#     )
-#     return quad + lin
-
-
-# def asymmetric_huber_loss(e, delta=10.0, over_ratio=1.2, under_ratio=1.0):
-#     """
-#     e = pred - truth
-#     """
-#     base = huber_loss(e, delta=delta)
-#     factor = torch.where(
-#         e > 0,
-#         torch.tensor(over_ratio, device=e.device, dtype=e.dtype),
-#         torch.tensor(under_ratio, device=e.device, dtype=e.dtype),
-#     )
-#     return factor * base
-
-
-# # ---- 如果你仍需要 identify_ranges，可保留；这里不再使用它来加权 ----
-
-
-# def com_loss_function(
-#     pred,
-#     truth,
-#     ori_truth,
-#     model,
-#     alpha,
-#     beta,
-#     # 平滑加权超参
-#     low=70.0,
-#     high=180.0,
-#     k=0.03,
-#     w_in=1.0,
-#     w_out=2.2,
-#     # Huber/非对称超参
-#     use_asymmetric=True,
-#     delta=10.0,
-#     over_ratio=1.4,
-#     under_ratio=1.0,
-#     lam_range=0.8,
-# ):
-#     """
-#     pred/truth/ori_truth: (batch, 1)
-#     alpha: 变化一致性项权重
-#     beta:  正则项权重
-#     """
-
-#     # 1) 平滑权重（按真值 ori_truth 加权），并做批内归一化以保持梯度尺度
-#     w_t = smooth_range_weight(
-#         ori_truth, low=low, high=high, k=k, w_in=w_in, w_out=w_out
-#     )
-#     w_t = w_t / (w_t.mean().clamp_min(1e-6))
-
-#     # 2) 预测误差：Huber 或 非对称 Huber（替代原 MSE）
-#     err = pred - truth
-#     if use_asymmetric:
-#         per_elem = asymmetric_huber_loss(
-#             err, delta=delta, over_ratio=over_ratio, under_ratio=under_ratio
-#         )
-#     else:
-#         per_elem = huber_loss(err, delta=delta)
-#     l_prd = (w_t * per_elem).mean()
-
-#     # 3) 变化一致性：同样用（较小 δ 的）Huber，更稳；权重取相邻两步的平均
-#     d_pred = pred[1:, :] - pred[:-1, :]
-#     d_truth = truth[1:, :] - truth[:-1, :]
-#     d_err = d_pred - d_truth
-#     w_pair = 0.5 * (w_t[1:, :] + w_t[:-1, :])
-#     l_var = (w_pair * huber_loss(d_err, delta=max(5.0, delta / 2))).mean()
-
-#     # 4) 权重正则（保留你的写法）
-#     w_prior = torch.tensor(
-#         [2.0, 1.2, 1.5], device=model.weights.device, dtype=model.weights.dtype
-#     )
-#     l_reg = F.mse_loss(model.weights, w_prior)
-
-#     # over high
-#     over_high = F.relu(pred - high) * (truth <= high)
-#     range_penalty = (over_high**2).mean() * lam_range
-
-#     total_loss = l_prd + alpha * l_var + beta * l_reg + range_penalty
-#     # total_loss = l_prd + range_penalty
-#     return total_loss
-
-
-# ---- 平滑权重：随偏离[low, high]的距离连续增加 ----
+# ---- used to smooth the range weight ----
 def smooth_range_weight(bg, low=70.0, high=180.0, k=0.03, w_in=1.0, w_out=2.0):
-    """
-    bg: (batch, 1)
-    返回: (batch, 1) in [w_in, w_out)
-    """
+
     d_low = F.relu(low - bg)
     d_high = F.relu(bg - high)
     d = d_low + d_high
@@ -1346,7 +1042,7 @@ def smooth_range_weight(bg, low=70.0, high=180.0, k=0.03, w_in=1.0, w_out=2.0):
     return w
 
 
-# ---- Huber 与 非对称 Huber ----
+# -----------Huber Loss and Asymmetric Huber Loss Functions-----------
 def huber_loss(e, delta=10.0):
     """
     e = pred - truth
@@ -1376,9 +1072,7 @@ def asymmetric_huber_loss(e, delta=10.0, over_ratio=1.2, under_ratio=1.0):
     return factor * base
 
 
-# ---- 如果你仍需要 identify_ranges，可保留；这里不再使用它来加权 ----
-
-
+# define the loss function for the proposed model
 def com_loss_function(
     pred,
     truth,
@@ -1386,19 +1080,13 @@ def com_loss_function(
     model,
     alpha,
     beta,
-    # 平滑加权超参
     low=70.0,
     high=180.0,
-    k=0.03,
+    k=0.05,  # 0.03
     w_in=1.0,
-    w_out=2.5,
-    lam_range=1.4,
+    w_out=3.0,
+    lam_range=1.2,  # 1.4
 ):
-    """
-    pred/truth/ori_truth: (batch, 1)
-    alpha: 变化一致性项权重
-    beta:  正则项权重
-    """
 
     # smooth_range_weight
     w_t = smooth_range_weight(
@@ -1419,9 +1107,14 @@ def com_loss_function(
     var_err = d_err**2
     l_var = (w_pair * var_err).mean()
 
-    # over high
+    # # over high
+    # over_high = F.relu(pred - high) * (truth <= high)
+    # range_penalty = (over_high**2).mean() * lam_range
+
+    # over high and under low
     over_high = F.relu(pred - high) * (truth <= high)
-    range_penalty = (over_high**2).mean() * lam_range
+    under_low = F.relu(low - pred) * (truth >= low)
+    range_penalty = (over_high**2 + under_low**2).mean() * lam_range
 
     total_loss = l_prd + alpha * l_var + range_penalty
     # total_loss = l_prd + range_penalty
@@ -1450,3 +1143,70 @@ def alarm_strategy(predictions, hypo_threshold, hyper_threshold):
         else:
             alarms.append(2)
     return alarms
+
+
+def visualise_phy_layer(
+    data_type,
+    data_folder,
+    p_num,
+    figure_folder,
+    peak_time_basal,
+    peak_time_bolus,
+    peak_time_carb,
+    interval,
+):
+    train_plot = prep.get_data(
+        data_type=data_type, folder_path=data_folder, p_num=p_num
+    )
+
+    train_plot_input, _ = prep.extract_features(train_plot)
+
+    basal_insulin = train_plot_input["current_basal"][-288:]
+    bolus_insulin = train_plot_input["current_bolus"][-288:]
+    meal = train_plot_input["carb_intake"][-288:]
+
+    basal_insulin = torch.as_tensor(basal_insulin, dtype=torch.float32)
+    bolus_insulin = torch.as_tensor(bolus_insulin, dtype=torch.float32)
+    meal = torch.as_tensor(meal, dtype=torch.float32)
+
+    basal_insulin_phy_processed = physiological_layer(
+        basal_insulin.unsqueeze(0), peak_time_basal / interval, 1000
+    )
+    fig_basal, _ = vis.visualise_insulin_meal_response(
+        data_1=basal_insulin,
+        data_2=basal_insulin_phy_processed[0, :],
+        legend_1="Basal Insulin (pmol/min)",
+        legend_2="Basal Insulin Processed",
+        ticks_per_day=6,
+    )
+    fig_basal_name = f"basal_insulin_phy_processed_patient_{p_num}.png"
+    fig_basal.savefig(os.path.join(figure_folder, fig_basal_name))
+    plt.close(fig_basal)
+
+    bolus_insulin_phy_processed = physiological_layer(
+        bolus_insulin.unsqueeze(0), peak_time_bolus / interval, 1000
+    )
+    fig_bolus, _ = vis.visualise_insulin_meal_response(
+        data_1=bolus_insulin,
+        data_2=bolus_insulin_phy_processed[0, :],
+        legend_1="Bolus Insulin (pmol/min)",
+        legend_2="Bolus Insulin Processed",
+        ticks_per_day=6,
+    )
+    fig_bolus_name = f"bolus_insulin_phy_processed_patient_{p_num}.png"
+    fig_bolus.savefig(os.path.join(figure_folder, fig_bolus_name))
+    plt.close(fig_bolus)
+
+    meal_phy_processed = physiological_layer(
+        meal.unsqueeze(0), peak_time_carb / interval, 1000
+    )
+    fig_meal, _ = vis.visualise_insulin_meal_response(
+        data_1=meal,
+        data_2=meal_phy_processed[0, :],
+        legend_1="Carbohydrate Intake (g)",
+        legend_2="Carbohydrate Intake Processed",
+        ticks_per_day=6,
+    )
+    fig_meal_name = f"meal_phy_processed_patient_{p_num}.png"
+    fig_meal.savefig(os.path.join(figure_folder, fig_meal_name))
+    plt.close(fig_meal)
