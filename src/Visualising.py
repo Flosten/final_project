@@ -7,7 +7,7 @@ def create_xticks(data, time_steps, ticks_per_day):
     """
     Create x-ticks for the plot based on the data length and ticks per day.
 
-    Args:
+    Parameters:
         data (list): List of data points to be visualised.
         time_steps (int): Number of time steps per tick.
         ticks_per_day (int): Number of ticks per day.
@@ -16,7 +16,6 @@ def create_xticks(data, time_steps, ticks_per_day):
         xticks (np.ndarray): Array of x-tick positions.
         xtick_labels (list): List of formatted x-tick labels.
     """
-
     num = len(data)
 
     tick_interval = max(1, 1440 // max(1, ticks_per_day))  # 1440 minutes in a day
@@ -40,8 +39,11 @@ def visualise_data(data, ticks_per_day, y_label, time_steps=1):
     """
     Visualise the data using a line plot.
 
-    Args:
+    Parameters:
         data (list): List of data points to be visualised.
+        ticks_per_day (int): Number of ticks per day for x-axis.
+        y_label (str): Label for the y-axis.
+        time_steps (int): Number of time steps per tick.
 
     Returns:
         fig, ax: Matplotlib figure and axes objects.
@@ -67,11 +69,13 @@ def visualise_insulin_meal_response(
     """
     Visualise the insulin and meal response data using a line plot.
 
-    Args:
+    Parameters:
         data_1 (list): List of insulin response data points.
         data_2 (list): List of meal response data points.
         legend_1 (str): Legend label for insulin response.
         legend_2 (str): Legend label for meal response.
+        ticks_per_day (int): Number of ticks per day for x-axis.
+        time_steps (int): Number of time steps per tick.
 
     Returns:
         fig, ax: Matplotlib figure and axes objects.
@@ -106,13 +110,15 @@ def visualise_preds_comparison(
     time_steps=5,
 ):
     """
-    Visualise the predicted values from baseline and proposed models against the true values.
+    Visualise the predicted values from model 1 and model 2 against the true values.
 
-    Args:
-        baseline_pred (list): List of predicted values from the baseline model.
-        proposed_pred (list): List of predicted values from the proposed model.
+    Parameters:
+        pred1 (list): List of predicted values from the model 1.
+        pred2 (list): List of predicted values from the  model 2.
         truth (list): List of true values.
         ticks_per_day (int): Number of ticks per day for x-axis.
+        label1 (str): Label for the model 1 predictions.
+        label2 (str): Label for the  model 2 predictions.
         time_steps (int): Number of time steps per tick.
 
     Returns:
@@ -187,14 +193,19 @@ def visualise_preds_comparison_threshold(
     threshold_2=70,
 ):
     """
-    Visualise the predicted values from baseline and proposed models against the true values.
+    Visualise the predicted values from  model 1 and model 2 against the true values,
+    including hyper and hypo threshold lines.
 
-    Args:
-        baseline_pred (list): List of predicted values from the baseline model.
-        proposed_pred (list): List of predicted values from the proposed model.
+    Parameters:
+        pred1 (list): List of predicted values from the model 1.
+        pred2 (list): List of predicted values from the model 2.
         truth (list): List of true values.
         ticks_per_day (int): Number of ticks per day for x-axis.
+        label1 (str): Label for the model 1 predictions.
+        label2 (str): Label for the model 2 predictions.
         time_steps (int): Number of time steps per tick.
+        threshold_1 (int): Hyper threshold value for BG level.
+        threshold_2 (int): Hypo threshold value for BG level.
 
     Returns:
         fig, ax: Matplotlib figure and axes objects.
@@ -277,7 +288,7 @@ def plot_lr_1(train_loss, val_loss):
     """
     Plot training and validation loss over epochs.
 
-    Args:
+    Parameters:
         train_loss (list): List of training loss values per epoch.
         val_loss (list): List of validation loss values per epoch.
 
@@ -311,7 +322,7 @@ def plot_lr_2(train_loss_1, train_loss_2, val_loss_1, val_loss_2):
     """
     Plot training and validation loss for two different loss functions.
 
-    Args:
+    Parameters:
         train_loss_1 (list): List of training loss values for the custom loss function.
         train_loss_2 (list): List of training loss values for the MSE loss function.
         val_loss_1 (list): List of validation loss values for the custom loss function.
@@ -349,7 +360,7 @@ def plot_pred_visualisation(pred, truth, ticks_per_day, time_steps):
     """
     Plot the predicted BG levels against the true BG levels.
 
-    Args:
+    Parameters:
         pred (list): List of predicted BG levels.
         truth (list): List of true BG levels.
         ticks_per_day (int): Number of ticks per day for x-axis.
@@ -358,7 +369,6 @@ def plot_pred_visualisation(pred, truth, ticks_per_day, time_steps):
     Returns:
     fig, ax: Matplotlib figure and axes objects.
     """
-
     fig, ax = plt.subplots(figsize=(8, 6))
 
     min_x = min(min(pred), min(truth))
@@ -398,14 +408,17 @@ def plot_pred_threshold_visualisation(
     """
     Plot the predicted BG levels against the true BG levels.
 
-    Args:
+    Parameters:
         pred (list): List of predicted BG levels.
         truth (list): List of true BG levels.
+        ticks_per_day (int): Number of ticks per day for x-axis.
+        time_steps (int): Number of time steps per tick.
+        threshold_1 (int): Hyper threshold value for BG level.
+        threshold_2 (int): Hypo threshold value for BG level.
 
     Returns:
     fig, ax: Matplotlib figure and axes objects.
     """
-
     fig, ax = plt.subplots(figsize=(8, 6))
     min_x = min(min(pred), min(truth))
     max_x = max(max(pred), max(truth))
@@ -458,6 +471,17 @@ def plot_pred_threshold_visualisation(
 
 
 def compute_q(arr):
+    """
+    Compute the mean, 25th percentile (Q1), and 75th percentile (Q3) of the input array.
+
+    Parameters:
+        arr (np.ndarray): Input array with shape (n_samples, n_features).
+
+    Returns:
+        mean (np.ndarray): Mean of the input array along the first axis.
+        q_low (np.ndarray): 25th percentile of the input array along the first axis.
+        q_high (np.ndarray): 75th percentile of the input array along the first axis.
+    """
     mean = np.nanmean(arr, axis=0)
     q_low = np.nanpercentile(arr, 25, axis=0)
     q_high = np.nanpercentile(arr, 75, axis=0)
@@ -473,7 +497,20 @@ def plot_errors(
     time_steps=5,
     ticks_per_day=2,
 ):
+    """
+    Plot the absolute errors of baseline and proposed models over time for group studies.
 
+    Parameters:
+        baseline_error_list (list): List of absolute errors for the model 1.
+        proposed_error_list2 (list): List of absolute errors for the model 2.
+        label1 (str): Label for the model 1.
+        label2 (str): Label for the model 2.
+        time_steps (int): Number of time steps per tick.
+        ticks_per_day (int): Number of ticks per day.
+
+    Returns:
+        fig, ax: Matplotlib figure and axes objects.
+    """
     baseline_arr_full = np.vstack(baseline_error_list)
     proposed_arr_full = np.vstack(proposed_error_list2)
 
@@ -529,6 +566,23 @@ def plot_interpretability(
     bolus_values,
     feature_names=["CGM", "Carb Intake", "Insulin Basal", "Insulin Bolus"],
 ):
+    """
+    Plot the input feature attribution values against their corresponding input feature values.
+
+    Parameters:
+        cgm_attr (np.ndarray): CGM input feature attribution values.
+        carb_attr (np.ndarray): Carb intake input feature attribution values.
+        basal_attr (np.ndarray): Insulin basal input feature attribution values.
+        bolus_attr (np.ndarray): Insulin bolus input feature attribution values.
+        cgm_values (np.ndarray): CGM input feature values.
+        carb_values (np.ndarray): Carb intake input feature values.
+        basal_values (np.ndarray): Insulin basal input feature values.
+        bolus_values (np.ndarray): Insulin bolus input feature values.
+        feature_names (list): List of feature names for the y-axis labels.
+
+    Returns:
+        fig, ax: Matplotlib figure and axes objects.
+    """
     define_cmap = LinearSegmentedColormap.from_list(
         "attr_cmap", ["#008DFF", "#0E5BDC", "#A11FAB", "#EB0079", "#FF0055"], N=256
     )
@@ -574,7 +628,15 @@ def plot_interpretability(
 
 
 def plot_shap_violin(group_shap):
+    """
+    Plot SHAP values using a violin plot for each input feature.
 
+    Parameters:
+        group_shap (dict): Dictionary containing SHAP values for each input feature.
+
+    Returns:
+        fig, ax: Matplotlib figure and axes objects.
+    """
     var_order = ["CGM", "Carb Intake", "Insulin Basal", "Insulin Bolus"]
     colors = ["#E41A1C", "#FDAE6B", "#4C9AEF", "#A463F2"]
 
@@ -611,6 +673,15 @@ def plot_shap_violin(group_shap):
 
 
 def plot_shap_boxplot(group_shap):
+    """
+    Plot SHAP values using a boxplot for each input feature.
+
+    Parameters:
+        group_shap (dict): Dictionary containing SHAP values for each input feature.
+
+    Returns:
+        fig, ax: Matplotlib figure and axes objects.
+    """
     var_order = ["CGM", "Carb Intake", "Insulin Basal", "Insulin Bolus"]
     colors = ["#E41A1C", "#FDAE6B", "#4C9AEF", "#A463F2"]
 
