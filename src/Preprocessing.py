@@ -1,9 +1,14 @@
+import os
+
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import torch
 from scipy.io import loadmat
 from sklearn.preprocessing import MinMaxScaler, StandardScaler
 from torch.utils.data import DataLoader, TensorDataset
+
+import src.Visualising as visl
 
 
 def get_data(data_type, folder_path, p_num):
@@ -227,6 +232,137 @@ def data_inverse_standardization_paper(data, scaler):
     return data_inverse
 
 
+# ----------------Exploratory Data Analysis (EDA) functions-------------------
+def data_eda(
+    data_type_1,
+    data_folder_1,
+    data_type_2,
+    data_folder_2,  # insulin
+    data_folder_3,  # meal
+    p_num,
+):
+    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    # print(f"Base directory: {base_dir}")
+    figures_dir = os.path.join(base_dir, "figures")
+
+    # plot the input data and output data
+    visualise_data = get_data(
+        data_type=data_type_1,
+        folder_path=data_folder_1,
+        p_num=p_num,
+    )
+    input_vis_data, output_vis_data = extract_features(visualise_data)
+
+    vis_cgm = input_vis_data["cgm"][-288:]
+    vis_carb_intake = input_vis_data["carb_intake"][-288:]
+    vis_insulin_basal = input_vis_data["current_basal"][-288:]
+    vis_insulin_bolus = input_vis_data["current_bolus"][-288:]
+    vis_G = output_vis_data["G"][-288:]
+
+    # plot and save the data
+    cgm_fig, _ = visl.visualise_data(
+        data=vis_cgm,
+        ticks_per_day=6,
+        y_label="CGM Glucose (mg/dL)",
+        time_steps=5,
+    )
+    cgm_fig_name = f"CGM_data_patient_{p_num}.png"
+    cgm_fig_path = os.path.join(figures_dir, cgm_fig_name)
+    cgm_fig.savefig(cgm_fig_path)
+    plt.close(cgm_fig)
+
+    carb_fig, _ = visl.visualise_data(
+        data=vis_carb_intake,
+        ticks_per_day=6,
+        y_label="Carbohydrate Intake (g)",
+        time_steps=5,
+    )
+    carb_fig_name = f"Carb_Intake_data_patient_{p_num}.png"
+    carb_fig_path = os.path.join(figures_dir, carb_fig_name)
+    carb_fig.savefig(carb_fig_path)
+    plt.close(carb_fig)
+
+    basal_fig, _ = visl.visualise_data(
+        data=vis_insulin_basal,
+        ticks_per_day=6,
+        y_label="Insulin Basal (pmol/min)",
+        time_steps=5,
+    )
+    basal_fig_name = f"Insulin_Basal_data_patient_{p_num}.png"
+    basal_fig_path = os.path.join(figures_dir, basal_fig_name)
+    basal_fig.savefig(basal_fig_path)
+    plt.close(basal_fig)
+
+    bolus_fig, _ = visl.visualise_data(
+        data=vis_insulin_bolus,
+        ticks_per_day=6,
+        y_label="Insulin Bolus (pmol)",
+        time_steps=5,
+    )
+    bolus_fig_name = f"Insulin_Bolus_data_patient_{p_num}.png"
+    bolus_fig_path = os.path.join(figures_dir, bolus_fig_name)
+    bolus_fig.savefig(bolus_fig_path)
+    plt.close(bolus_fig)
+
+    g_fig, _ = visl.visualise_data(
+        data=vis_G,
+        ticks_per_day=6,
+        y_label="Reference Glucose (mg/dL)",
+        time_steps=5,
+    )
+    g_fig_name = f"G_data_patient_{p_num}.png"
+    g_fig_path = os.path.join(figures_dir, g_fig_name)
+    g_fig.savefig(g_fig_path)
+    plt.close(g_fig)
+
+    # plot the data for physiological signals
+    data_insulin = get_data(
+        data_type=data_type_2,
+        folder_path=data_folder_2,
+        p_num=p_num,
+    )
+    data_meal = get_data(
+        data_type=data_type_2,
+        folder_path=data_folder_3,
+        p_num=p_num,
+    )
+    input_data_insulin, output_data_insulin = extract_features(data_insulin)
+    input_data_meal, output_data_meal = extract_features(data_meal)
+
+    # get the bolus, carb and reference G data
+    bolus_insulin = input_data_insulin["current_bolus"]
+    bolus_insulin_g = output_data_insulin["G"]
+    carb_intake = input_data_meal["carb_intake"]
+    carb_intake_g = output_data_meal["G"]
+
+    # plot and save the figure
+    bolus_insulin_fig, _ = visl.visualise_insulin_meal_response(
+        data_1=bolus_insulin_g,
+        data_2=bolus_insulin,
+        legend_1="Reference Glucose (mg/dL)",
+        legend_2="Insulin Bolus (pmol)",
+        ticks_per_day=6,
+        time_steps=5,
+    )
+    bolus_insulin_fig_name = f"Insulin_Bolus_response_patient_{p_num}.png"
+    bolus_insulin_fig_path = os.path.join(figures_dir, bolus_insulin_fig_name)
+    bolus_insulin_fig.savefig(bolus_insulin_fig_path)
+    plt.close(bolus_insulin_fig)
+
+    carb_intake_fig, _ = visl.visualise_insulin_meal_response(
+        data_1=carb_intake_g,
+        data_2=carb_intake,
+        legend_1="Reference Glucose (mg/dL)",
+        legend_2="Carbohydrate Intake (g)",
+        ticks_per_day=6,
+        time_steps=5,
+    )
+    carb_intake_fig_name = f"Carb_Intake_response_patient_{p_num}.png"
+    carb_intake_fig_path = os.path.join(figures_dir, carb_intake_fig_name)
+    carb_intake_fig.savefig(carb_intake_fig_path)
+    plt.close(carb_intake_fig)
+
+
 # ---------------- preprocessing functions for baseline model -------------------
 def data_preprocessing_baseline(
     data_type,
@@ -300,7 +436,97 @@ def data_preprocessing_baseline(
     return train_loader, val_loader, input_scalers, output_scaler
 
 
+def data_preprocessing_baseline_for_99(
+    data_type,
+    folder_path_4days,
+    p_num,  # Participant number 0 ~ 100
+    seq_len,
+    ph,
+    interval,
+    scaler=None,
+):
+
+    # transfer sequence length to the number of units
+    seq_len = int(seq_len / interval)  # Convert sequence length to the number of units
+    # print(f"Sequence length in units: {seq_len}")
+    # ensure ph is an integer
+    ph = int(ph / interval)  # Convert ph to the number of units
+
+    # get the data
+    data_4days = get_data(data_type, folder_path_4days, p_num)
+
+    # extract features
+    input_data_4days, output_data_4days = extract_features(data_4days, ts=interval)
+
+    # split the data into train and validation sets
+    train_days = 3
+    val_days = 1
+    input_train_4days, input_val_4days = split_train_val(
+        input_data_4days, train_days, val_days, interval=interval
+    )
+    output_train_4days, output_val_4days = split_train_val(
+        output_data_4days, train_days, val_days, interval=interval
+    )
+
+    # standardize the data for 4 days datasets
+    input_data_4days_scaled, input_scalers = standardize_dataset(input_train_4days)
+    output_data_4days_scaled, output_scaler = standardize_dataset(output_train_4days)
+
+    # standardize the validation data
+    input_val_scaled = standardize_val_data(input_val_4days, input_scalers)
+    output_val_scaled = standardize_val_data(output_val_4days, output_scaler)
+
+    # construct dataset
+    # trainset
+    # 4 days
+    x_4days, y_4days = select_build_sequence_data(
+        input_data_4days_scaled, output_data_4days_scaled, seq_len, ph
+    )
+
+    x_train = x_4days
+    y_train = y_4days
+
+    # valset
+    x_val, y_val = select_build_sequence_data(
+        input_val_scaled, output_val_scaled, seq_len, ph
+    )
+
+    # create dataloaders
+    train_loader, val_loader = create_dataloaders(x_train, y_train, x_val, y_val)
+
+    return train_loader, val_loader, input_scalers, output_scaler
+
+
 def test_data_preprocessing_baseline(
+    data_type, folder_path_1, p_num, seq_len, ph, interval, input_scalers, output_scaler
+):
+    # transfer sequence length to the number of units
+    seq_len = int(seq_len / interval)  # Convert sequence length to the number of units
+    # ensure ph is an integer
+    ph = int(ph / interval)  # Convert ph to the number of units
+
+    # get the data
+    test_data_1 = get_data(data_type, folder_path_1, p_num)
+
+    # extract features
+    input_data_1, output_data_1 = extract_features(test_data_1, ts=interval)
+
+    # standardize the data
+    input_data_1_scaled = standardize_val_data(input_data_1, input_scalers)
+    output_data_1_scaled = standardize_val_data(output_data_1, output_scaler)
+
+    # construct dataset
+    x_test, y_test = select_build_sequence_data(
+        input_data_1_scaled, output_data_1_scaled, seq_len, ph
+    )
+
+    # create dataloader
+    test_loader = create_test_dataloader(x_test, y_test)
+
+    return test_loader
+
+
+def test_data_preprocessing_baseline_for_99(
     data_type, folder_path_1, p_num, seq_len, ph, interval, input_scalers, output_scaler
 ):
     # transfer sequence length to the number of units
@@ -414,6 +640,27 @@ def standardize_2_datasets(data_4days, data_30days):
         ).flatten()  # Flatten back to 1D array
 
     return data_4days_scaled, data_30days_scaled, scalers
+
+
+def standardize_dataset(data_4days):
+    scalers = {}
+    data_4days_scaled = {}
+
+    for key in data_4days.keys():
+        data_4d = np.array(data_4days[key]).reshape(
+            -1, 1
+        )  # Reshape to 2D array for StandardScaler
+
+        scaler = StandardScaler()
+        # scaler = MinMaxScaler()
+        scaler.fit(data_4d)
+        scalers[key] = scaler
+
+        data_4days_scaled[key] = scaler.transform(
+            data_4d
+        ).flatten()  # Flatten back to 1D array
+
+    return data_4days_scaled, scalers
 
 
 def standardize_val_data(data, scalers):
@@ -762,7 +1009,187 @@ def data_preprocessing_proposed(
     return train_loader, val_loader, input_scalers, output_scaler
 
 
+def data_preprocessing_proposed_for_99(
+    data_type,
+    folder_path_4days,
+    p_num,
+    seq_len_cgm,
+    seq_len_carb,
+    seq_len_basal,
+    seq_len_bolus,
+    ph,
+    interval,
+    batch_size=128,
+    scaler=None,
+):
+
+    # transfer sequence length to the number of units
+    seq_len_cgm = int(
+        seq_len_cgm / interval
+    )  # Convert sequence length to the number of units
+    seq_len_carb = int(
+        seq_len_carb / interval
+    )  # Convert sequence length to the number of units
+    seq_len_basal = int(
+        seq_len_basal / interval
+    )  # Convert sequence length to the number of units
+    seq_len_bolus = int(
+        seq_len_bolus / interval
+    )  # Convert sequence length to the number of units
+    # ensure ph is an integer
+    ph = int(ph / interval)  # Convert ph to the number of units
+
+    # get the data
+    data_4days = get_data(data_type, folder_path_4days, p_num)
+
+    # extract features
+    input_data_4days, output_data_4days = extract_features(data_4days, ts=interval)
+
+    # split the data into train and validation sets
+    train_days = 3
+    val_days = 1
+    input_train_4days, input_val_4days = split_train_val(
+        input_data_4days, train_days, val_days, interval=interval
+    )
+    output_train_4days, output_val_4days = split_train_val(
+        output_data_4days, train_days, val_days, interval=interval
+    )
+
+    # standardize the data for 4 days dataset
+    input_data_4days_scaled, input_scalers = standardize_dataset(input_train_4days)
+    output_data_4days_scaled, output_scaler = standardize_dataset(output_train_4days)
+
+    # standardize the validation data
+    input_val_scaled = standardize_val_data(input_val_4days, input_scalers)
+    output_val_scaled = standardize_val_data(output_val_4days, output_scaler)
+
+    # construct dataset
+    # trainset
+    # 4 days
+    x_4days, y_4days = create_sequence_for_proposed(
+        input_data_4days_scaled,
+        output_data_4days_scaled,
+        seq_len_cgm,
+        seq_len_carb,
+        seq_len_basal,
+        seq_len_bolus,
+        ph,
+    )
+
+    # we also need the original data for the proposed model
+    ori_y_4days = get_ori_output(
+        output_train_4days,
+        seq_len_cgm,
+        seq_len_carb,
+        seq_len_basal,
+        seq_len_bolus,
+        ph,
+    )
+
+    # print(f"Check original output data values: {ori_y_4days[0:5]}")
+
+    # concatenate the data
+    x_train = {key: np.concatenate([x_4days[key]], axis=0) for key in x_4days}
+    y_train = np.concatenate([y_4days], axis=0)
+    ori_y_train = np.concatenate([ori_y_4days], axis=0)
+
+    # valset
+    x_val, y_val = create_sequence_for_proposed(
+        input_val_scaled,
+        output_val_scaled,
+        seq_len_cgm,
+        seq_len_carb,
+        seq_len_basal,
+        seq_len_bolus,
+        ph,
+    )
+    ori_y_4days_val = get_ori_output(
+        output_val_4days,
+        seq_len_cgm,
+        seq_len_carb,
+        seq_len_basal,
+        seq_len_bolus,
+        ph,
+    )
+
+    # create dataloaders
+    train_loader, val_loader = create_dataloaders_proposed(
+        x_train, y_train, x_val, y_val, ori_y_train, ori_y_4days_val, batch_size
+    )
+
+    return train_loader, val_loader, input_scalers, output_scaler
+
+
 def test_data_preprocessing_proposed(
+    data_type,
+    folder_path_1,
+    p_num,
+    seq_len_cgm,
+    seq_len_carb,
+    seq_len_basal,
+    seq_len_bolus,
+    ph,
+    interval,
+    input_scalers,
+    output_scaler,
+    batch_size=128,
+):
+    # transfer sequence length to the number of units
+    seq_len_cgm = int(
+        seq_len_cgm / interval
+    )  # Convert sequence length to the number of units
+    seq_len_carb = int(
+        seq_len_carb / interval
+    )  # Convert sequence length to the number of units
+    seq_len_basal = int(
+        seq_len_basal / interval
+    )  # Convert sequence length to the number of units
+    seq_len_bolus = int(
+        seq_len_bolus / interval
+    )  # Convert sequence length to the number of units
+    # ensure ph is an integer
+    ph = int(ph / interval)  # Convert ph to the number of units
+
+    # get the data
+    test_data_1 = get_data(data_type, folder_path_1, p_num)
+
+    # extract features
+    input_data_1, output_data_1 = extract_features(test_data_1, ts=interval)
+
+    # standardize the data
+    input_data_1_scaled = standardize_val_data(input_data_1, input_scalers)
+    output_data_1_scaled = standardize_val_data(output_data_1, output_scaler)
+
+    # construct dataset
+    x_test, y_test = create_sequence_for_proposed(
+        input_data_1_scaled,
+        output_data_1_scaled,
+        seq_len_cgm,
+        seq_len_carb,
+        seq_len_basal,
+        seq_len_bolus,
+        ph,
+    )
+
+    # we also need the original data for the proposed model
+    ori_y_test = get_ori_output(
+        output_data_1,
+        seq_len_cgm,
+        seq_len_carb,
+        seq_len_basal,
+        seq_len_bolus,
+        ph,
+    )
+
+    # create dataloader
+    test_loader = create_test_dataloader_proposed(
+        x_test, y_test, ori_y_test, batch_size
+    )
+
+    return test_loader
+
+
+def test_data_preprocessing_proposed_for_99(
     data_type,
     folder_path_1,
     p_num,
@@ -951,29 +1378,6 @@ def get_ori_output(
     return ori_data
 
 
-# def create_dataloaders_proposed(
-#     x_train, y_train, x_val, y_val, y_ori_train, y_ori_val, batch_size=128
-# ):
-
-#     # convert numpy arrays to PyTorch tensors
-#     x_train_tensor = torch.tensor(x_train, dtype=torch.float32)
-#     y_train_tensor = torch.tensor(y_train, dtype=torch.float32)
-#     y_ori_train_tensor = torch.tensor(y_ori_train, dtype=torch.float32)
-#     x_val_tensor = torch.tensor(x_val, dtype=torch.float32)
-#     y_val_tensor = torch.tensor(y_val, dtype=torch.float32)
-#     y_ori_val_tensor = torch.tensor(y_ori_val, dtype=torch.float32)
-
-#     # create TensorDataset
-#     train_dataset = TensorDataset(x_train_tensor, y_train_tensor, y_ori_train_tensor)
-#     val_dataset = TensorDataset(x_val_tensor, y_val_tensor, y_ori_val_tensor)
-
-#     # create DataLoader
-#     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
-#     val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
-
-#     return train_loader, val_loader
-
-
 def create_dataloaders_proposed(
     x_dict_train, y_train, x_dict_val, y_val, y_ori_train, y_ori_val, batch_size=128
 ):
@@ -1002,21 +1406,6 @@ def create_dataloaders_proposed(
     val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
 
     return train_loader, val_loader
-
-
-# def create_test_dataloader_proposed(x_test, y_test, y_ori, batch_size=128):
-#     # convert numpy arrays to PyTorch tensors
-#     x_test_tensor = torch.tensor(x_test, dtype=torch.float32)
-#     y_test_tensor = torch.tensor(y_test, dtype=torch.float32)
-#     y_ori_tensor = torch.tensor(y_ori, dtype=torch.float32)
-
-#     # create TensorDataset
-#     test_dataset = TensorDataset(x_test_tensor, y_test_tensor, y_ori_tensor)
-
-#     # create DataLoader
-#     test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
-
-#     return test_loader
 
 
 def create_test_dataloader_proposed(x_dict_test, y_test, y_ori, batch_size=128):
