@@ -22,7 +22,7 @@ def baseline_modeling(patient_num: int):
     """
     This function trains and evaluates the baseline model for the given patient number.
 
-    Args:
+    Parameters:
         patient_num (int): The patient number for which the model is trained and evaluated.
 
     Returns:
@@ -337,7 +337,28 @@ def baseline_modeling(patient_num: int):
 
 
 def proposed_modeling(patient_num: int):
+    """
+    This function trains and evaluates the proposed model for the given patient number.
 
+    Parameters:
+        patient_num (int): The patient number for which the model is trained and evaluated.
+
+    Returns:
+        tuple: A tuple containing the following elements:
+            - proposed_preds (np.ndarray): Predictions made by the proposed model.
+            - proposed_truths (np.ndarray): Ground truth values for the test set.
+            - attention_weights (np.ndarray): Attention weights from the model.
+            - proposed_rmse_all (float): RMSE for all predictions.
+            - proposed_hyper_rmse (float): RMSE for hyperglycemic values.
+            - proposed_hypo_rmse (float): RMSE for hypoglycemic values.
+            - proposed_thres_rmse (float): RMSE for values above the threshold.
+            - proposed_ud (float): Upward delay of the predictions.
+            - proposed_dd (float): Downward delay of the predictions.
+            - proposed_fit (float): FIT score of the predictions.
+            - proposed_f1_score (float): F1 score of the alarm predictions.
+            - proposed_error (np.ndarray): Error between predictions and truths.
+            - proposed_shap_perp: SHAP values for model interpretability.
+    """
     train_type = "train"
     test_type = "test"
     folder_4days_path = "train_4days"
@@ -719,7 +740,7 @@ def proposed_modeling(patient_num: int):
 
 
 def ablation_study_loss_function(patient_num: int):
-
+    """Ablation study for the loss function in the proposed model."""
     train_type = "train"
     test_type = "test"
     folder_4days_path = "train_4days"
@@ -1113,7 +1134,7 @@ def ablation_study_loss_function(patient_num: int):
 
 
 def ablation_study_phy_layer(patient_num: int):
-
+    """Ablation study for the Physiological Modeling Layer in the proposed model."""
     train_type = "train"
     test_type = "test"
     folder_4days_path = "train_4days"
@@ -1503,7 +1524,7 @@ def ablation_study_phy_layer(patient_num: int):
 
 
 def main():
-
+    """Main function to run this project."""
     # define metrics lists
     baseline_rmse_all_list = []
     proposed_rmse_all_list = []
