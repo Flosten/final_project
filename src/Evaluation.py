@@ -1,9 +1,13 @@
+"""
+Evaluation metrics and interpretability methods for the project.
+"""
+
 import numpy as np
 import scipy.stats as stats
 import torch
 import torch.nn.functional as F
 import tqdm
-from captum.attr import IntegratedGradients, ShapleyValueSampling
+from captum.attr import ShapleyValueSampling
 from scipy.signal import find_peaks
 from sklearn.metrics import f1_score, mean_squared_error
 
@@ -11,11 +15,33 @@ import src.Visualising as vis
 
 
 class WrapperModel(torch.nn.Module):
+    """
+    A wrapper for the model to handle the input format for the 4-channel model.
+    """
+
     def __init__(self, model):
+        """
+        Initialize the wrapper with the model.
+
+        Parameters:
+            model (torch.nn.Module): The model to wrap.
+        """
         super().__init__()
         self.model = model
 
     def forward(self, cgm, carb, basal, bolus):
+        """
+        Forward pass through the model.
+
+        Parameters:
+            cgm (torch.Tensor): CGM values.
+            carb (torch.Tensor): Carb intake values.
+            basal (torch.Tensor): Basal insulin values.
+            bolus (torch.Tensor): Bolus insulin values.
+
+        Returns:
+            torch.Tensor: Model predictions.
+        """
         x = torch.cat([cgm, carb, basal, bolus], dim=-1)
         return self.model(x)
 
@@ -26,7 +52,7 @@ def calculate_rmse(predictions, targets):
     """
     Calculate Root Mean Squared Error (RMSE) between predictions and targets.
 
-    Args:
+    Parameters:
         predictions (list): Predicted values.
         targets (list): True values.
 
@@ -45,7 +71,7 @@ def calculate_threshold_rmse(
     """
     Calculate RMSE for hyperglycemia and hypoglycemia separately based on thresholds.
 
-    Args:
+    Parameters:
         predictions (list): Predicted values.
         targets (list): True values.
         hyper_threshold (float): Threshold for hyperglycemia.
@@ -84,7 +110,7 @@ def get_ranges(truth):
     """
     Get the upward and downward ranges from the truth BG values.
 
-    Args:
+    Parameters:
         truth (list): True BG values.
 
     Returns:
@@ -127,7 +153,7 @@ def calculate_delay_j(prediction, truth, t1, t2, ph):
     """
     Calculate the delay in prediction for a given trend range.
 
-    Args:
+    Parameters:
         prediction (list): Predicted BG values.
         truth (list): True BG values.
         t1 (int): Start index of the trend range.
@@ -165,7 +191,7 @@ def calculate_ud_dd(prediction, truth, ph):
     Calculate the average upward delay (UD) and downward delay (DD)
     for the given predictions and truth values.
 
-    Args:
+    Parameters:
         prediction (list): Predicted BG values.
         truth (list): True BG values.
         ph (int): Prediction horizon.
@@ -174,7 +200,6 @@ def calculate_ud_dd(prediction, truth, ph):
         tuple: Average upward delay (UD), average downward delay (DD),
         list of upward delays, list of downward delays.
     """
-
     # get the upward and downward ranges
     trend_ranges = get_ranges(truth)
     ud_list = []
@@ -198,7 +223,16 @@ def calculate_ud_dd(prediction, truth, ph):
 
 
 def calculate_fit(preds, truths):
+    """
+    Calculate the fit of predictions to the truth values.
 
+    Parameters:
+        preds (list): Predicted values.
+        truths (list): True values.
+
+    Returns:
+        float: Fit value as a percentage.
+    """
     y_pred = np.array(preds).flatten()
     y_true = np.array(truths).flatten()
 
@@ -214,6 +248,16 @@ def calculate_fit(preds, truths):
 
 # alarm system (F1 score)
 def extract_event_starts(truth, label):
+    """
+    Extract the start indices of dangerous events in the truth array for a given label.
+
+    Parameters:
+        truth (list): True labels array.
+        label (int): The label for which to extract event starts.
+
+    Returns:
+        list: List of start indices for the specified label.
+    """
     event_starts = []
     prev = -1
     for i, val in enumerate(truth):
@@ -240,7 +284,20 @@ def extract_event_starts(truth, label):
 
 
 def evaluate_alarm_multiclass(alarm, truth, dws, dwe, step=1, ph=60):
+    """
+    Evaluate the alarm system performance using F1 score, precision, and recall.
 
+    Parameters:
+        alarm (list): Predicted alarm labels.
+        truth (list): True labels.
+        dws (int): Downward window size in seconds.
+        dwe (int): Downward window extension in seconds.
+        step (int): Step size for the evaluation.
+        ph (int): Prediction horizon in seconds.
+
+    Returns:
+        dict: Dictionary containing TP, FP, FN, precision, recall, and F1 score for hypo and hyper alarms.
+    """
     assert len(alarm) == len(truth), "Alarm and truth arrays must have the same length."
     alarm = np.array(alarm)
     truth = np.array(truth)
@@ -360,7 +417,15 @@ def evaluate_alarm_multiclass(alarm, truth, dws, dwe, step=1, ph=60):
 
 
 def describe_results(results):
+    """
+    Describe the results for the group study.
 
+    Parameters:
+        results (list): List of results to describe.
+
+    Returns:
+        dict: Dictionary containing the description of the results.
+    """
     data = np.array(results)
     data = data[~np.isnan(data)]
 
@@ -383,19 +448,13 @@ def combine_directional(attr_ori, attr_physio, eps=1e-8):
     """
     Combine origin + physio SHAP attributions using directional weighting.
 
-    Parameters
-    ----------
-    attr_ori : np.ndarray
-        SHAP values from origin feature
-    attr_physio : np.ndarray
-        SHAP values from physio feature
-    eps : float
-        Small value to avoid division by zero
+    Parameters:
+        attr_ori (np.ndarray): Original SHAP attribution values.
+        attr_physio (np.ndarray): Physiological SHAP attribution values.
+        eps (float): Small value to avoid division by zero.
 
-    Returns
-    -------
-    combined : np.ndarray
-        Directionally weighted SHAP values (with sign)
+    Returns:
+        np.ndarray: Combined SHAP attribution values.
     """
     numerator = attr_ori * np.abs(attr_ori) + attr_physio * np.abs(attr_physio)
     denominator = np.abs(attr_ori) + np.abs(attr_physio) + eps
@@ -414,9 +473,27 @@ def calculate_shap_proposed(
     seq_len_carb_intake,
     interval,
     max_samples=10,
-    n_samples=1,  # 15
+    n_samples=10,  # 15
 ):
+    """
+    Calculate SHAP values for the proposed model with physiological layer.
 
+    Parameters:
+        model (torch.nn.Module): The trained model.
+        dataloader (torch.utils.data.DataLoader): DataLoader for the dataset.
+        tp_insulin_basal (float): Peak time for insulin basal.
+        tp_insulin_bolus (float): Peak time for insulin bolus.
+        tp_meal (float): Peak time for carb intake.
+        seq_len_basal_insulin (int): Sequence length for basal insulin.
+        seq_len_bolus_insulin (int): Sequence length for bolus insulin.
+        seq_len_carb_intake (int): Sequence length for carb intake.
+        interval (int): Time interval in seconds.
+        max_samples (int): Maximum number of samples to process.
+        n_samples (int): Number of samples for SHAP calculation.
+
+    Returns:
+        tuple: Figure, axes, and SHAP values per patient.
+    """
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = model.to(device)
     model.eval()
@@ -610,7 +687,25 @@ def calculate_shap_proposed_no_phy(
     max_samples=10,
     n_samples=10,  # 15
 ):
+    """
+    Calculate SHAP values for the proposed model without physiological layer (ablation study).
 
+    Parameters:
+        model (torch.nn.Module): The trained model.
+        dataloader (torch.utils.data.DataLoader): DataLoader for the dataset.
+        tp_insulin_basal (float): Peak time for insulin basal.
+        tp_insulin_bolus (float): Peak time for insulin bolus.
+        tp_meal (float): Peak time for carb intake.
+        seq_len_basal_insulin (int): Sequence length for basal insulin.
+        seq_len_bolus_insulin (int): Sequence length for bolus insulin.
+        seq_len_carb_intake (int): Sequence length for carb intake.
+        interval (int): Time interval in seconds.
+        max_samples (int): Maximum number of samples to process.
+        n_samples (int): Number of samples for SHAP calculation.
+
+    Returns:
+        tuple: Figure, axes, and SHAP values per patient.
+    """
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = model.to(device)
     model.eval()
@@ -745,6 +840,19 @@ def calculate_shap_for_4channels(
     max_samples=10,
     n_samples=10,
 ):
+    """
+    Calculate SHAP values for Baseline model with 4 channels,
+    including CGM, Carb Intake, Insulin Basal, and Insulin Bolus.
+
+    Parameters:
+        model (torch.nn.Module): The trained model.
+        dataloader (torch.utils.data.DataLoader): DataLoader for the dataset.
+        max_samples (int): Maximum number of samples to process.
+        n_samples (int): Number of samples for SHAP calculation.
+
+    Returns:
+        tuple: Figure, axes, and SHAP values per patient.
+    """
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = WrapperModel(model).to(device)  # wrap the model
     model.eval()
@@ -847,6 +955,15 @@ def calculate_shap_for_4channels(
 
 
 def min_max_normalization(data):
+    """
+    Normalize the input data using min-max normalization.
+
+    Parameters:
+        data (torch.Tensor): Input data to normalize.
+
+    Returns:
+        torch.Tensor: Normalized data.
+    """
     min_value = data.min(dim=1, keepdim=True)[0]
     max_value = data.max(dim=1, keepdim=True)[0]
     normalized_data = (data - min_value) / (max_value - min_value + 1e-8)
@@ -855,7 +972,16 @@ def min_max_normalization(data):
 
 def physiological_layer(input_seq, lamda, kernel_size):
     """
-    Applies the physiological layer to preprocess the insulin and meal data.
+    Apply a physiological layer to the input sequence using a kernel
+    based on a physiological model.
+
+    Parameters:
+        input_seq (torch.Tensor): Input sequence of shape (batch_size, seq_len).
+        lamda (float): Lambda parameter for the physiological model.
+        kernel_size (int): Size of the kernel to be used.
+
+    Returns:
+        torch.Tensor: Output sequence after applying the physiological layer.
     """
     # Create a kernel based on the physiological model
     t = torch.arange(0, kernel_size).float()
