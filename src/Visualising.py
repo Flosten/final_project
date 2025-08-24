@@ -1,3 +1,7 @@
+"""
+This module provides functions to visualise various types of data,
+"""
+
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.colors import LinearSegmentedColormap
@@ -720,4 +724,6 @@ def plot_shap_boxplot(group_shap):
     ax.set_ylabel("SHAP Attribution Value")
     ax.set_xlabel("Input Features")
 
+    return fig, ax
+    return fig, ax
     return fig, ax
