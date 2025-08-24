@@ -725,5 +725,3 @@ def plot_shap_boxplot(group_shap):
     ax.set_xlabel("Input Features")
 
     return fig, ax
-    return fig, ax
-    return fig, ax
