@@ -1,3 +1,8 @@
+"""
+This module provides functions to preprocess data for Baseline models, Proposed models,
+and to perform exploratory data analysis (EDA) on the dataset.
+"""
+
 import os
 
 import matplotlib.pyplot as plt
@@ -12,7 +17,17 @@ import src.Visualising as visl
 
 
 def get_data(data_type, folder_path, p_num):
+    """
+    Load data from .mat files based on the specified data type and participant number.
 
+    Parameters:
+    data_type (str): Type of data to load, either 'train' or 'test'.
+    folder_path (str): Path to the folder containing the data files.
+    p_num (int): Participant number, should be between 1 and 100.
+
+    Returns:
+    dict: Loaded data from the .mat file.
+    """
     # Ensure p_num is a string with leading zeros
     if 0 < p_num < 10:
         p_num = f"00{p_num}"
@@ -36,6 +51,15 @@ def get_data(data_type, folder_path, p_num):
 
 
 def mat_deconstruct(data):
+    """
+    Recursively deconstruct a MATLAB structured array into a Python dictionary.
+
+    Parameters:
+    data (any): The data to deconstruct, can be a numpy array, structured array, or other types.
+
+    Returns:
+    dict or list: Deconstructed data in a more Python-friendly format.
+    """
     if isinstance(data, np.ndarray):
         if data.dtype.names:
             out = {}
@@ -61,7 +85,16 @@ def mat_deconstruct(data):
 
 
 def extract_features(data, ts=5):
+    """
+    Extract features from the data and pretreat it for model training.
 
+    Parameters:
+    data (dict): The data loaded from the .mat file.
+    ts (int): Time step for resampling, default is 5 minutes.
+
+    Returns:
+    tuple: Input data and output data dictionaries.
+    """
     # input: CGM, current insulin bolus, current insulin basal, current carb intake
     # get the CGM data
     input_cgm = mat_deconstruct(data["CGM"])
@@ -153,6 +186,15 @@ def extract_features(data, ts=5):
 
 
 def deal_insulin_basal_1min(data):
+    """
+    Process the insulin basal data for 1-minute intervals.
+
+    Parameters:
+    data (list or array): The raw insulin basal data.
+
+    Returns:
+    np.ndarray: Processed insulin basal data resampled to 1-minute intervals.
+    """
     basal_ary = np.array(data)
     # -> pmol/min
     basal_ary = basal_ary * 100
@@ -165,6 +207,15 @@ def deal_insulin_basal_1min(data):
 
 
 def deal_insulin_basal(data):
+    """
+    Process the insulin basal data for 5-minute intervals.
+
+    Parameters:
+    data (list or array): The raw insulin basal data.
+
+    Returns:
+    np.ndarray: Processed insulin basal data resampled to 5-minute intervals.
+    """
     basal_ary = np.array(data)
     # -> pmol/min
     basal_ary = basal_ary * 100
@@ -175,6 +226,15 @@ def deal_insulin_basal(data):
 
 
 def deal_insulin_bolus_1min(data):
+    """
+    Process the insulin bolus data for 1-minute intervals.
+
+    Parameters:
+    data (list or array): The raw insulin bolus data.
+
+    Returns:
+    np.ndarray: Processed insulin bolus data resampled to 1-minute intervals.
+    """
     bolus_ary = np.array(data)
     # -> pmol
     bolus_ary = bolus_ary * 6000
@@ -191,6 +251,15 @@ def deal_insulin_bolus_1min(data):
 
 
 def deal_insulin_bolus(data):
+    """
+    Process the insulin bolus data for 5-minute intervals.
+
+    Parameters:
+    data (list or array): The raw insulin bolus data.
+
+    Returns:
+    np.ndarray: Processed insulin bolus data resampled to 5-minute intervals.
+    """
     bolus_ary = np.array(data)
     # -> pmol
     bolus_ary = bolus_ary * (6000 / 5)  # Convert to pmol/min
@@ -201,6 +270,15 @@ def deal_insulin_bolus(data):
 
 
 def data_standardization(data):
+    """
+    Standardize the input data using StandardScaler.
+
+    Parameters:
+    data (list or array): The input data to be standardized.
+
+    Returns:
+    tuple: Standardized data and the fitted StandardScaler object.
+    """
     # input data shape (sampels, )
     scalar = StandardScaler()
     data = np.array(data)
@@ -211,6 +289,16 @@ def data_standardization(data):
 
 
 def data_inverse_standardization(data, scaler):
+    """
+    Inverse the standardization of the input data using the fitted StandardScaler.
+
+    Parameters:
+    data (list or array): The standardized input data to be inverse transformed.
+    scaler (StandardScaler): The fitted StandardScaler object used for standardization.
+
+    Returns:
+    np.ndarray: Inverse transformed data.
+    """
     # input data shape (samples, )
     data = np.array(data)
     data = data.reshape(-1, 1)  # Reshape to 2D array for inverse transformation
@@ -220,7 +308,17 @@ def data_inverse_standardization(data, scaler):
 
 
 def data_inverse_standardization_paper(data, scaler):
+    """
+    Inverse the standardization of the input data using the fitted StandardScaler
+    same as the paper.
 
+    Parameters:
+    data (list or array): The standardized input data to be inverse transformed.
+    scaler (list): The fitted StandardScaler object used for standardization,
+
+    Returns:
+    np.ndarray: Inverse transformed data.
+    """
     # input data shape (samples, )
     mean = scaler[0][0]
     std = scaler[0][1]
@@ -241,6 +339,17 @@ def data_eda(
     data_folder_3,  # meal
     p_num,
 ):
+    """
+    Perform exploratory data analysis (EDA) on the given data.
+
+    Parameters:
+    data_type_1 (str): Type of the first data, either 'train' or 'test'.
+    data_folder_1 (str): Folder path for the data (CGM, carb intake, insulin).
+    data_type_2 (str): Type of the second data, either 'train' or 'test'.
+    data_folder_2 (str): Folder path for the second data (insulin).
+    data_folder_3 (str): Folder path for the third data (meal).
+    p_num (int): Participant number, should be between 1 and 100.
+    """
     base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     # print(f"Base directory: {base_dir}")
     figures_dir = os.path.join(base_dir, "figures")
@@ -374,7 +483,22 @@ def data_preprocessing_baseline(
     interval,
     scaler=None,
 ):
+    """
+    Preprocess the data for the baseline model.
 
+    Parameters:
+    data_type (str): Type of data to load, either 'train' or 'test'.
+    folder_path_4days (str): Folder path for the 4 days data.
+    folder_path_30days (str): Folder path for the 30 days data.
+    p_num (int): Participant number, between 1 and 100.
+    seq_len (int): Sequence length for the model.
+    ph (int): Prediction horizon.
+    interval (int): Time interval in minutes for the data.
+    scaler (object, optional): Predefined scaler for standardization. Defaults to None.
+
+    Returns:
+    tuple: Train and validation dataloaders, input scalers, and output scaler.
+    """
     # transfer sequence length to the number of units
     seq_len = int(seq_len / interval)  # Convert sequence length to the number of units
     print(f"Sequence length in units: {seq_len}")
@@ -445,7 +569,21 @@ def data_preprocessing_baseline_for_99(
     interval,
     scaler=None,
 ):
+    """
+    Preprocess the data for the baseline model for 99 participants.
 
+    Parameters:
+    data_type (str): Type of data to load, either 'train' or 'test'.
+    folder_path_4days (str): Folder path for the 4 days data.
+    p_num (int): Participant number, between 1 and 100.
+    seq_len (int): Sequence length for the model.
+    ph (int): Prediction horizon.
+    interval (int): Time interval in minutes for the data.
+    scaler (object, optional): Predefined scaler for standardization. Defaults to None.
+
+    Returns:
+    tuple: Train and validation dataloaders, input scalers, and output scaler.
+    """
     # transfer sequence length to the number of units
     seq_len = int(seq_len / interval)  # Convert sequence length to the number of units
     # print(f"Sequence length in units: {seq_len}")
@@ -500,6 +638,22 @@ def data_preprocessing_baseline_for_99(
 def test_data_preprocessing_baseline(
     data_type, folder_path_1, p_num, seq_len, ph, interval, input_scalers, output_scaler
 ):
+    """
+    Preprocess the test data for the baseline model.
+
+    Parameters:
+    data_type (str): Type of data to load, either 'train' or 'test'.
+    folder_path_1 (str): Folder path for the test data.
+    p_num (int): Participant number, between 1 and 100.
+    seq_len (int): Sequence length for the model.
+    ph (int): Prediction horizon.
+    interval (int): Time interval in minutes for the data.
+    input_scalers (dict): Input scalers for standardization.
+    output_scaler (object): Output scaler for standardization.
+
+    Returns:
+    DataLoader: Test dataloader with preprocessed data.
+    """
     # transfer sequence length to the number of units
     seq_len = int(seq_len / interval)  # Convert sequence length to the number of units
     # ensure ph is an integer
@@ -529,6 +683,22 @@ def test_data_preprocessing_baseline(
 def test_data_preprocessing_baseline_for_99(
     data_type, folder_path_1, p_num, seq_len, ph, interval, input_scalers, output_scaler
 ):
+    """
+    Preprocess the test data for the baseline model for 99 participants.
+
+    Parameters:
+    data_type (str): Type of data to load, either 'train' or 'test'.
+    folder_path_1 (str): Folder path for the test data.
+    p_num (int): Participant number, between 1 and 100.
+    seq_len (int): Sequence length for the model.
+    ph (int): Prediction horizon.
+    interval (int): Time interval in minutes for the data.
+    input_scalers (dict): Input scalers for standardization.
+    output_scaler (object): Output scaler for standardization.
+
+    Returns:
+    DataLoader: Test dataloader with preprocessed data.
+    """
     # transfer sequence length to the number of units
     seq_len = int(seq_len / interval)  # Convert sequence length to the number of units
     # ensure ph is an integer
@@ -556,6 +726,17 @@ def test_data_preprocessing_baseline_for_99(
 
 
 def standardize_paper(data, scaler):
+    """
+    Standardize the input data using the provided scaler by the paper.
+
+    Parameters:
+    data (list or array): The input data to be standardized.
+    scaler (list): The fitted StandardScaler object used for standardization,
+                   contains mean and standard deviation from the paper.
+
+    Returns:
+    np.ndarray: Standardized data.
+    """
     mean = scaler[0][0]
     std = scaler[0][1]
     data = np.array(data)
@@ -566,6 +747,22 @@ def standardize_paper(data, scaler):
 def test_data_preprocessing_baseline_paper(
     data_type, folder_path_1, p_num, seq_len, ph, interval, input_scalers, output_scaler
 ):
+    """
+    Preprocess the test data for the baseline model using the paper's standardization method.
+
+    Parameters:
+    data_type (str): Type of data to load, either 'train' or 'test'.
+    folder_path_1 (str): Folder path for the test data.
+    p_num (int): Participant number, between 1 and 100.
+    seq_len (int): Sequence length for the model.
+    ph (int): Prediction horizon.
+    interval (int): Time interval in minutes for the data.
+    input_scalers (dict): Input scalers for standardization.
+    output_scaler (list): Output scaler for standardization, contains mean and std from the paper.
+
+    Returns:
+    DataLoader: Test dataloader with preprocessed data.
+    """
     # transfer sequence length to the number of units
     seq_len = int(seq_len / interval)  # Convert sequence length to the number of units
     print(f"Sequence length in units: {seq_len}")
@@ -614,6 +811,16 @@ def test_data_preprocessing_baseline_paper(
 
 
 def standardize_2_datasets(data_4days, data_30days):
+    """
+    This the function used to standardize two datasets (4 days and 30 days) using StandardScaler.
+
+    Parameters:
+    data_4days (dict): Dictionary containing the 4 days data.
+    data_30days (dict): Dictionary containing the 30 days data.
+
+    Returns:
+    tuple: Scaled 4 days data, scaled 30 days data, and the scalers used for each key.
+    """
     scalers = {}
     data_4days_scaled = {}
     data_30days_scaled = {}
@@ -643,6 +850,15 @@ def standardize_2_datasets(data_4days, data_30days):
 
 
 def standardize_dataset(data_4days):
+    """
+    Standardize the input data using StandardScaler for a single dataset.
+
+    Parameters:
+    data_4days (dict): Dictionary containing the 4/30 days data.
+
+    Returns:
+    tuple: Scaled 4/30 days data and the scaler used for each key.
+    """
     scalers = {}
     data_4days_scaled = {}
 
@@ -664,6 +880,16 @@ def standardize_dataset(data_4days):
 
 
 def standardize_val_data(data, scalers):
+    """
+    Standardize the validation data using the fitted scalers from the training data.
+
+    Parameters:
+    data (dict): Dictionary containing the validation data.
+    scalers (dict): Dictionary containing the fitted scalers for each key.
+
+    Returns:
+    dict: Scaled validation data.
+    """
     val_data_scaled = {}
 
     for key, value in data.items():
@@ -676,6 +902,18 @@ def standardize_val_data(data, scalers):
 
 
 def select_build_sequence_data(input_data, output_data, seq_len, ph):
+    """
+    This function is used to select and build sequence data for the model.
+
+    Parameters:
+    input_data (dict): Dictionary containing the input data.
+    output_data (dict): Dictionary containing the output data.
+    seq_len (int): Sequence length for the model.
+    ph (int): Prediction horizon.
+
+    Returns:
+    tuple: Input and output data in sequence format.
+    """
     # input data
     # input cgm
     input_select_cgm = select_data(input_data["cgm"], seq_len, ph, "cgm")
@@ -718,6 +956,19 @@ def select_build_sequence_data(input_data, output_data, seq_len, ph):
 
 
 def select_build_sequence_data_paper(input_data, output_data, seq_len, ph):
+    """
+    This function is used to select and build sequence data for the model
+    same as the paper.
+
+    Parameters:
+    input_data (dict): Dictionary containing the input data.
+    output_data (dict): Dictionary containing the output data.
+    seq_len (int): Sequence length for the model.
+    ph (int): Prediction horizon.
+
+    Returns:
+    tuple: Input and output data in sequence format.
+    """
     # input data
     # input cgm
     input_select_cgm = select_data(input_data["cgm"], seq_len, ph, "cgm")
@@ -760,6 +1011,18 @@ def select_build_sequence_data_paper(input_data, output_data, seq_len, ph):
 
 
 def select_data(data, seq_len, ph, data_type):
+    """
+    This function is used to select the data based on the data type and sequence length.
+
+    Parameters:
+    data (list or array): The input data to be selected.
+    seq_len (int): Sequence length for the model.
+    ph (int): Prediction horizon.
+    data_type (str): Type of data, either 'cgm', 'output', or 'input'.
+
+    Returns:
+    np.ndarray: Selected data based on the data type and sequence length.
+    """
     if data_type == "cgm":
         selected_data = np.array(data)
         selected_data = selected_data[:-ph]  # Remove the last ph values
@@ -776,7 +1039,16 @@ def select_data(data, seq_len, ph, data_type):
 
 
 def build_sequence_data(data, seq_len):
+    """
+    This function is used to build the sequence data based on the sequence length.
 
+    Parameters:
+    data (list or array): The input data to be built into sequences.
+    seq_len (int): Sequence length for the model.
+
+    Returns:
+    np.ndarray: Sequence data with shape (num_samples, seq_len).
+    """
     data = np.array(data).reshape(-1)
     num_samples = len(data) - seq_len + 1
 
@@ -788,7 +1060,19 @@ def build_sequence_data(data, seq_len):
 
 
 def create_dataloaders(x_train, y_train, x_val, y_val, batch_size=128):
+    """
+    Create PyTorch DataLoaders for training and validation datasets.
 
+    Parameters:
+    x_train (np.ndarray): Training input data.
+    y_train (np.ndarray): Training output data.
+    x_val (np.ndarray): Validation input data.
+    y_val (np.ndarray): Validation output data.
+    batch_size (int): Batch size for the DataLoader.
+
+    Returns:
+    tuple: Training and validation DataLoaders.
+    """
     # convert numpy arrays to PyTorch tensors
     x_train_tensor = torch.tensor(x_train, dtype=torch.float32)
     y_train_tensor = torch.tensor(y_train, dtype=torch.float32)
@@ -807,6 +1091,17 @@ def create_dataloaders(x_train, y_train, x_val, y_val, batch_size=128):
 
 
 def create_test_dataloader(x_test, y_test, batch_size=128):
+    """
+    Create a PyTorch DataLoader for the test dataset.
+
+    Parameters:
+    x_test (np.ndarray): Test input data.
+    y_test (np.ndarray): Test output data.
+    batch_size (int): Batch size for the DataLoader.
+
+    Returns:
+    DataLoader: Test DataLoader.
+    """
     # convert numpy arrays to PyTorch tensors
     x_test_tensor = torch.tensor(x_test, dtype=torch.float32)
     y_test_tensor = torch.tensor(y_test, dtype=torch.float32)
@@ -821,6 +1116,18 @@ def create_test_dataloader(x_test, y_test, batch_size=128):
 
 
 def split_train_val(data, train_days, val_days, interval=5):
+    """
+    Split the data into training and validation sets based on the number of days.
+
+    Parameters:
+    data (dict): Dictionary containing the data to be split.
+    train_days (int): Number of days for the training set.
+    val_days (int): Number of days for the validation set.
+    interval (int): Time interval in minutes for the data.
+
+    Returns:
+    tuple: Dictionaries containing the training and validation data.
+    """
     # calculate the number of samples for train and validation sets
     num_train_samples = train_days * (
         24 * 60 // interval
@@ -849,12 +1156,35 @@ def split_train_val(data, train_days, val_days, interval=5):
 
 # ---------------- preprocessing functions for proposed model -------------------
 class MultiInputDataset(torch.utils.data.Dataset):
+    """
+    Custom dataset for the proposed model that handles multiple input features.
+
+    Attributes:
+    x_dict (dict): Dictionary containing input features.
+    y (np.ndarray): Output labels.
+    y_ori (np.ndarray): Original output labels for the proposed model.
+    """
+
     def __init__(self, x_dict, y, y_ori):
+        """
+        Initialize the dataset with input features and output labels.
+
+        Parameters:
+        x_dict (dict): Dictionary containing input features.
+        y (np.ndarray): Output labels.
+        y_ori (np.ndarray): Original output labels for the proposed model.
+        """
         self.x_dict = x_dict
         self.y = y
         self.y_ori = y_ori
 
     def __len__(self):
+        """
+        Return the length of the dataset.
+
+        Returns:
+        int: Number of samples in the dataset.
+        """
         return len(self.y)
 
     # def __getitem__(self, idx):
@@ -865,7 +1195,17 @@ class MultiInputDataset(torch.utils.data.Dataset):
     #     y_item = torch.tensor(self.y[idx], dtype=torch.float32)
     #     ori_y_item = torch.tensor(self.y_ori[idx], dtype=torch.float32)
     #     return x_item, y_item, ori_y_item
+
     def __getitem__(self, idx):
+        """
+        Get a single item from the dataset.
+
+        Parameters:
+        idx (int): Index of the item to retrieve.
+
+        Returns:
+        tuple: A tuple containing the input features, output label, and original output label.
+        """
         x_item = {key: self.x_dict[key][idx] for key in self.x_dict}
         y_item = self.y[idx]
         ori_y_item = self.y_ori[idx]
@@ -886,7 +1226,26 @@ def data_preprocessing_proposed(
     batch_size=128,
     scaler=None,
 ):
+    """
+    Preprocess the data for the proposed model.
 
+    Parameters:
+    data_type (str): Type of data to load, either 'train' or 'test'.
+    folder_path_4days (str): Folder path for the 4 days data.
+    folder_path_30days (str): Folder path for the 30 days data.
+    p_num (int): Participant number, between 1 and 100.
+    seq_len_cgm (int): Sequence length for CGM data.
+    seq_len_carb (int): Sequence length for carbohydrate intake data.
+    seq_len_basal (int): Sequence length for basal insulin data.
+    seq_len_bolus (int): Sequence length for bolus insulin data.
+    ph (int): Prediction horizon.
+    interval (int): Time interval in minutes for the data.
+    batch_size (int): Batch size for the DataLoader.
+    scaler (object, optional): Predefined scaler for standardization. Defaults to None.
+
+    Returns:
+    tuple: Train and validation dataloaders, input scalers, and output scaler.
+    """
     # transfer sequence length to the number of units
     seq_len_cgm = int(
         seq_len_cgm / interval
@@ -1022,7 +1381,25 @@ def data_preprocessing_proposed_for_99(
     batch_size=128,
     scaler=None,
 ):
+    """
+    Preprocess the data for the proposed model for 99 participants.
 
+    Parameters:
+    data_type (str): Type of data to load, either 'train' or 'test'.
+    folder_path_4days (str): Folder path for the 4 days data.
+    p_num (int): Participant number, between 1 and 100.
+    seq_len_cgm (int): Sequence length for CGM data.
+    seq_len_carb (int): Sequence length for carbohydrate intake data.
+    seq_len_basal (int): Sequence length for basal insulin data.
+    seq_len_bolus (int): Sequence length for bolus insulin data.
+    ph (int): Prediction horizon.
+    interval (int): Time interval in minutes for the data.
+    batch_size (int): Batch size for the DataLoader.
+    scaler (object, optional): Predefined scaler for standardization. Defaults to None.
+
+    Returns:
+    tuple: Train and validation dataloaders, input scalers, and output scaler.
+    """
     # transfer sequence length to the number of units
     seq_len_cgm = int(
         seq_len_cgm / interval
@@ -1134,6 +1511,26 @@ def test_data_preprocessing_proposed(
     output_scaler,
     batch_size=128,
 ):
+    """
+    Preprocess the test data for the proposed model.
+
+    Parameters:
+    data_type (str): Type of data to load, either 'train' or 'test'.
+    folder_path_1 (str): Folder path for the test data.
+    p_num (int): Participant number, between 1 and 100.
+    seq_len_cgm (int): Sequence length for CGM data.
+    seq_len_carb (int): Sequence length for carbohydrate intake data.
+    seq_len_basal (int): Sequence length for basal insulin data.
+    seq_len_bolus (int): Sequence length for bolus insulin data.
+    ph (int): Prediction horizon.
+    interval (int): Time interval in minutes for the data.
+    input_scalers (dict): Input scalers for standardization.
+    output_scaler (list): Output scaler for standardization, contains mean and std from the paper.
+    batch_size (int): Batch size for the DataLoader.
+
+    Returns:
+    DataLoader: Test dataloader with preprocessed data.
+    """
     # transfer sequence length to the number of units
     seq_len_cgm = int(
         seq_len_cgm / interval
@@ -1203,6 +1600,26 @@ def test_data_preprocessing_proposed_for_99(
     output_scaler,
     batch_size=128,
 ):
+    """
+    Preprocess the test data for the proposed model for 99 participants.
+
+    Parameters:
+    data_type (str): Type of data to load, either 'train' or 'test'.
+    folder_path_1 (str): Folder path for the test data.
+    p_num (int): Participant number, between 1 and 100.
+    seq_len_cgm (int): Sequence length for CGM data.
+    seq_len_carb (int): Sequence length for carbohydrate intake data.
+    seq_len_basal (int): Sequence length for basal insulin data.
+    seq_len_bolus (int): Sequence length for bolus insulin data.
+    ph (int): Prediction horizon.
+    interval (int): Time interval in minutes for the data.
+    input_scalers (dict): Input scalers for standardization.
+    output_scaler (list): Output scaler for standardization, contains mean and std from the paper.
+    batch_size (int): Batch size for the DataLoader.
+
+    Returns:
+    DataLoader: Test dataloader with preprocessed data.
+    """
     # transfer sequence length to the number of units
     seq_len_cgm = int(
         seq_len_cgm / interval
@@ -1261,6 +1678,21 @@ def test_data_preprocessing_proposed_for_99(
 def create_sequence_for_proposed(
     input_data, output_data, seq_len_cgm, seq_len_carb, seq_len_basal, seq_len_bolus, ph
 ):
+    """
+    This function creates sequences for the proposed model.
+
+    Parameters:
+    input_data (dict): Dictionary containing the input data.
+    output_data (dict): Dictionary containing the output data.
+    seq_len_cgm (int): Sequence length for CGM data.
+    seq_len_carb (int): Sequence length for carbohydrate intake data.
+    seq_len_basal (int): Sequence length for basal insulin data.
+    seq_len_bolus (int): Sequence length for bolus insulin data.
+    ph (int): Prediction horizon.
+
+    Returns:
+    tuple: Input and output data in sequence format.
+    """
     # get the max sequence length
     seq_len_max = max(seq_len_cgm, seq_len_basal, seq_len_bolus, seq_len_carb)
 
@@ -1329,7 +1761,19 @@ def create_sequence_for_proposed(
 
 
 def select_data_for_proposed(data, seq_len, max_seq_len, ph, data_type):
+    """
+    This function selects and processes data for the proposed model.
 
+    Parameters:
+    data (list or array): The input data to be selected.
+    seq_len (int): Sequence length for the model.
+    max_seq_len (int): Maximum sequence length across all input types.
+    ph (int): Prediction horizon.
+    data_type (str): Type of data, either 'cgm', 'output', or 'input'.
+
+    Returns:
+    np.ndarray: Processed data based on the data type and sequence length.
+    """
     data = np.array(data)
 
     if data_type == "cgm":
@@ -1346,7 +1790,16 @@ def select_data_for_proposed(data, seq_len, max_seq_len, ph, data_type):
 
 
 def build_sequence_for_proposed(data, seq_len):
+    """
+    This function builds the sequence data based on the sequence length.
 
+    Parameters:
+    data (list or array): The input data to be built into sequences.
+    seq_len (int): Sequence length for the model.
+
+    Returns:
+    np.ndarray: Sequence data with shape (num_samples, seq_len).
+    """
     data = np.array(data).reshape(-1)
     num_samples = len(data) - seq_len + 1
 
@@ -1368,6 +1821,20 @@ def get_ori_output(
     seq_len_bolus,
     ph,
 ):
+    """
+    This function retrieves the original output data for the proposed model.
+
+    Parameters:
+    data (dict): Dictionary containing the output data.
+    seq_len_cgm (int): Sequence length for CGM data.
+    seq_len_carb (int): Sequence length for carbohydrate intake data.
+    seq_len_basal (int): Sequence length for basal insulin data.
+    seq_len_bolus (int): Sequence length for bolus insulin data.
+    ph (int): Prediction horizon.
+
+    Returns:
+    np.ndarray: Original output data reshaped to a single column.
+    """
     max_seq_len = max(seq_len_cgm, seq_len_basal, seq_len_bolus, seq_len_carb)
     # output G
     ori_data = select_data_for_proposed(
@@ -1381,6 +1848,21 @@ def get_ori_output(
 def create_dataloaders_proposed(
     x_dict_train, y_train, x_dict_val, y_val, y_ori_train, y_ori_val, batch_size=128
 ):
+    """
+    Create PyTorch DataLoaders for training and validation datasets for the proposed model.
+
+    Parameters:
+    x_dict_train (dict): Dictionary containing training input data.
+    y_train (np.ndarray): Training output data.
+    x_dict_val (dict): Dictionary containing validation input data.
+    y_val (np.ndarray): Validation output data.
+    y_ori_train (np.ndarray): Original training output data.
+    y_ori_val (np.ndarray): Original validation output data.
+    batch_size (int): Batch size for the DataLoader.
+
+    Returns:
+    tuple: Training and validation DataLoaders.
+    """
     # convert numpy arrays to PyTorch tensors
     x_train_tensor = {
         key: torch.tensor(x_dict_train[key], dtype=torch.float32)
@@ -1409,6 +1891,18 @@ def create_dataloaders_proposed(
 
 
 def create_test_dataloader_proposed(x_dict_test, y_test, y_ori, batch_size=128):
+    """
+    Create a PyTorch DataLoader for the test dataset for the proposed model.
+
+    Parameters:
+    x_dict_test (dict): Dictionary containing test input data.
+    y_test (np.ndarray): Test output data.
+    y_ori (np.ndarray): Original test output data.
+    batch_size (int): Batch size for the DataLoader.
+
+    Returns:
+    DataLoader: Test DataLoader.
+    """
     # convert numpy arrays to PyTorch tensors
     x_test_tensor = {
         key: torch.tensor(x_dict_test[key], dtype=torch.float32) for key in x_dict_test
