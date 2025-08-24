@@ -1,3 +1,9 @@
+"""
+This module contains the implementation of the personalized LSTM model, Proposed Model
+with channel attention, physiological layer and customized loss function for
+blood glucose prediction, as well as training and evaluation functions.
+"""
+
 import os
 
 import matplotlib.pyplot as plt
@@ -18,7 +24,7 @@ class PersonalizedModelB1(nn.Module):
     """
     A simple personalised LSTM model for blood glucose prediction.
 
-    Args:
+    Parameters:
         input_size (int): Size of the input features.
         hidden_size (int, optional): Size of the hidden layer. Default is 96.
         output_size (int, optional): Size of the output layer. Default is 1.
@@ -26,6 +32,15 @@ class PersonalizedModelB1(nn.Module):
     """
 
     def __init__(self, input_size, hidden_size=96, output_size=1, num_layers=1):
+        """
+        Initializes the PersonalizedModelB1 with the specified parameters.
+
+        Parameters:
+            input_size (int): Size of the input features.
+            hidden_size (int, optional): Size of the hidden layer. Default is 96.
+            output_size (int, optional): Size of the output layer. Default is 1.
+            num_layers (int, optional): Number of LSTM layers. Default is 1.
+        """
         super().__init__()
         self.input_size = input_size
         self.hidden_size = hidden_size
@@ -38,7 +53,7 @@ class PersonalizedModelB1(nn.Module):
         """
         This function defines the forward pass of the model.
 
-        Args:
+        Parameters:
             x (torch.Tensor): Input tensor of shape (batch_size, seq_length, input_size).
 
         Returns:
@@ -63,7 +78,7 @@ def baseline_model_train(
     """
     This function defines the training process for the baseline model.
 
-    Args:
+    Parameters:
         model (PersonalizedModel_B1): The baseline model to be trained.
         train_dataloader (torch.utils.data.DataLoader): DataLoader for the training dataset.
         val_dataloader (torch.utils.data.DataLoader): DataLoader for the validation dataset.
@@ -128,18 +143,21 @@ def baseline_model_eval(
     model, test_dataloader, scaler, device, ticks_per_day, time_steps
 ):
     """
-    Evaluate the baseline model on the test dataset (still in progress).
+    Evaluate the baseline model on the test dataset.
 
-    Args:
+    Parameters:
         model (PersonalizedModel_B1): The trained baseline model.
         test_dataloader (torch.utils.data.DataLoader): DataLoader for the test dataset.
         scaler (sklearn.preprocessing.StandardScaler): Scaler used for standardization.
         device (torch.device): Device to run the model on (CPU or GPU).
+        ticks_per_day (int): Number of ticks per day for visualization.
+        time_steps (int): Number of time steps for the model input.
 
     Returns:
         predictions (list): List of predictions for the test dataset.
         truth (list): List of ground truth values for the test dataset.
         fig, ax: Matplotlib figure and axes objects for visualizing the predictions.
+        fig_threshold, ax_threshold: Matplotlib figure and axes objects for visualizing thresholds.
     """
     model = model.to(device)
     model.eval()
@@ -187,6 +205,15 @@ def baseline_model_eval(
 
 
 def to_numpy(x):
+    """
+    Convert input to numpy array.
+
+    Parameters:
+        x (torch.Tensor or np.ndarray): Input tensor or array.
+
+    Returns:
+        np.ndarray: Converted numpy array.
+    """
     if isinstance(x, torch.Tensor):
         return x.detach().cpu().numpy()
     if isinstance(x, np.ndarray):
@@ -195,7 +222,25 @@ def to_numpy(x):
 
 
 def paper_model_eval(model, test_dataloader, scaler, device, ticks_per_day, time_steps):
+    """
+    Evaluate the proposed model on the test dataset same as in the paper.
 
+    Parameters:
+        model (ProposedModel): The trained proposed model.
+        test_dataloader (torch.utils.data.DataLoader): DataLoader for the test dataset.
+        scaler (sklearn.preprocessing.StandardScaler): Scaler used for standardization.
+        device (torch.device): Device to run the model on (CPU or GPU).
+        ticks_per_day (int): Number of ticks per day for visualization.
+        time_steps (int): Number of time steps for the model input.
+
+    Returns:
+        predictions (list): List of predictions for the test dataset.
+        truth (list): List of ground truth values for the test dataset.
+        pred_alarms (list): List of predicted alarms based on thresholds.
+        truth_alarms (list): List of ground truth alarms based on thresholds.
+        fig, ax: Matplotlib figure and axes objects for visualizing the predictions.
+        fig_threshold, ax_threshold: Matplotlib figure and axes objects for visualizing thresholds.
+    """
     predictions = []
     truth = []
 
@@ -248,11 +293,17 @@ class ChannelAttention(nn.Module):
     This class implements a channel attention mechanism that computes attention weights
     based on the context and prior knowledge.
 
-    Args:
+    Parameters:
         hidden_size (int): Size of the hidden layer.
     """
 
     def __init__(self, hidden_size):
+        """
+        Initializes the ChannelAttention with a query parameter.
+
+        Parameters:
+            hidden_size (int): Size of the hidden layer.
+        """
         super().__init__()
         self.query = nn.Parameter(torch.zeros(1, hidden_size * 2 + 1))
 
@@ -260,7 +311,7 @@ class ChannelAttention(nn.Module):
         """
         This function computes the attention weights and weighted context.
 
-        Args:
+        Parameters:
             context (list): List of tensors containing context information.
             prior_knowledge (list): List of tensors containing prior knowledge.
 
@@ -305,7 +356,7 @@ class ProposedModel(nn.Module):
     """
     Our proposed model that combines multi-channel LSTM and channel attention.
 
-    Args:
+    Parameters:
         input_size (int): Size of the input features.
         hidden_size (int): Size of the hidden layer.
         output_size (int): Size of the output layer.
@@ -313,6 +364,15 @@ class ProposedModel(nn.Module):
     """
 
     def __init__(self, input_size, hidden_size, output_size, num_layers=1):
+        """
+        Initializes the ProposedModel with the specified parameters.
+
+        Parameters:
+            input_size (int): Size of the input features.
+            hidden_size (int): Size of the hidden layer.
+            output_size (int): Size of the output layer.
+            num_layers (int, optional): Number of LSTM layers. Default is 1.
+        """
         super().__init__()
         self.input_size = input_size
         self.hidden_size = hidden_size
@@ -361,10 +421,14 @@ class ProposedModel(nn.Module):
         """
         This function defines the forward pass of the proposed model.
 
-        Args:
-            cgm (torch.Tensor): Input tensor for past CGM data (batch_size, seq_length, input_size).
-            insulin (torch.Tensor): Insulin data (batch_size, seq_length, input_size).
-            meal (torch.Tensor): Input tensor for meal data (batch_size, seq_length, input_size).
+        Parameters:
+            cgm (torch.Tensor): Input tensor for continuous glucose monitoring data.
+            basal_insulin (torch.Tensor): Input tensor for basal insulin data.
+            bolus_insulin (torch.Tensor): Input tensor for bolus insulin data.
+            meal (torch.Tensor): Input tensor for meal data.
+            physio_basal_insulin (torch.Tensor): Preprocessed basal insulin data with physio layer.
+            physio_bolus_insulin (torch.Tensor): Preprocessed bolus insulin data with physio layer.
+            physio_meal (torch.Tensor): Preprocessed meal data with physio layer.
 
         Returns:
             tuple: A tuple containing the output tensor and attention weights.
@@ -435,6 +499,15 @@ class ProposedModel(nn.Module):
 
 
 def min_max_normalization(data):
+    """
+    Applies min-max normalization to the insulin and meal data.
+
+    Parameters:
+        data (torch.Tensor): Input tensor of shape (batch_size, seq_length).
+
+    Returns:
+        torch.Tensor: Normalized tensor of the same shape as input.
+    """
     min_value = data.min(dim=1, keepdim=True)[0]
     max_value = data.max(dim=1, keepdim=True)[0]
     normalized_data = (data - min_value) / (max_value - min_value + 1e-8)
@@ -444,6 +517,14 @@ def min_max_normalization(data):
 def physiological_layer(input_seq, lamda, kernel_size):
     """
     Applies the physiological layer to preprocess the insulin and meal data.
+
+    Parameters:
+        input_seq (torch.Tensor): Input tensor of shape (batch_size, seq_length).
+        lamda (float): Parameter for the physiological model.
+        kernel_size (int): Size of the kernel for the convolution operation.
+
+    Returns:
+        torch.Tensor: Processed tensor of the same shape as input.
     """
     # Create a kernel based on the physiological model
     t = torch.arange(0, kernel_size).float()
@@ -487,6 +568,30 @@ def proposed_model_train(
     interval,  # time interval for the physiological model
     device,
 ):
+    """
+    This function defines the training process for the proposed model.
+
+    Parameters:
+        model (ProposedModel): The proposed model to be trained.
+        train_dataloader (torch.utils.data.DataLoader): DataLoader for the training dataset.
+        val_dataloader (torch.utils.data.DataLoader): DataLoader for the validation dataset.
+        optimizer (torch.optim.Optimizer): Optimizer for training.
+        epochs (int): Number of training epochs.
+        alpha (float): Loss weight for variance term.
+        beta (float): Loss weight for regularization term.
+        seq_len_carb_intake (int): Sequence length for carb intake.
+        seq_len_basal_insulin (int): Sequence length for basal insulin.
+        seq_len_bolus_insulin (int): Sequence length for bolus insulin.
+        tp_insulin_basal (float): Peak time for basal insulin response.
+        tp_insulin_bolus (float): Peak time for bolus insulin response.
+        tp_meal (float): Peak time for meal response.
+        interval (float): Time interval for the physiological model.
+        device (torch.device): Device to run the model on (CPU or GPU).
+
+    Returns:
+        tuple: A tuple containing the trained model, figure, and axes
+        for visualizing the training process.
+    """
     train_losses = []
     train_losses_2 = []  # for debugging and monitoring
     val_losses = []
@@ -670,6 +775,16 @@ def get_peak_time(
     patient_num,
     var_type,  # 'basal', 'bolus', 'meal'
 ):
+    """
+    This function calculates the peak time for the given variable type
+
+    Parameters:
+        patient_num (int): Patient number to retrieve data for.
+        var_type (str): Type of variable ('ts-dtI' for bolus insulin, 'ts-dtM' for carb intake).
+
+    Returns:
+        int: Peak time in minutes.
+    """
     data_type = "test"
     data = prep.get_data(data_type, var_type, patient_num)
     input_data, output_data = prep.extract_features(data)
@@ -708,6 +823,37 @@ def proposed_model_train_for_99(
     scheduler_patience: int = 2,
     scheduler_min_lr: float = 1e-6,
 ):
+    """
+    This function defines the training process for other 99 patients in the proposed model.
+
+    Parameters:
+        model (ProposedModel): The proposed model to be trained.
+        train_dataloader (torch.utils.data.DataLoader): DataLoader for the training dataset.
+        val_dataloader (torch.utils.data.DataLoader): DataLoader for the validation dataset.
+        optimizer (torch.optim.Optimizer): Optimizer for training.
+        epochs (int): Number of training epochs.
+        alpha (float): Loss weight for variance term.
+        beta (float): Loss weight for regularization term.
+        seq_len_carb_intake (int): Sequence length for carb intake.
+        seq_len_basal_insulin (int): Sequence length for basal insulin.
+        seq_len_bolus_insulin (int): Sequence length for bolus insulin.
+        tp_insulin_basal (float): Peak time for basal insulin response.
+        tp_insulin_bolus (float): Peak time for bolus insulin response.
+        tp_meal (float): Peak time for meal response.
+        interval (float): Time interval for the physiological model.
+        device (torch.device): Device to run the model on (CPU or GPU).
+        patience (int, optional): Patience for early stopping. Default is 3.
+        min_delta (float, optional): Minimum change to qualify as an improvement. Default is 0.0.
+        use_plateau_scheduler (bool, optional): Whether to use plateau scheduler. Default is True.
+        scheduler_factor (float, optional): Factor by which to reduce learning rate. Default is 0.5.
+        scheduler_patience (int, optional): Patience for plateau scheduler. Default is 2.
+        scheduler_min_lr (float, optional): Minimum learning rate. Default is 1e-6.
+
+    Returns:
+        tuple: A tuple containing the trained model, figure, and axes
+        for visualizing the training process.
+    """
+
     def _to_int_ge1(x):
         return max(int(round(float(x))), 1)
 
@@ -891,6 +1037,16 @@ def proposed_model_train_for_99(
 
 
 def exp_smoothing(data, alpha):
+    """
+    Apply exponential smoothing to the data.
+
+    Args:
+        data (list or np.ndarray): Input data to be smoothed.
+        alpha (float): Smoothing factor between 0 and 1.
+
+    Returns:
+        list: Smoothed data.
+    """
     smoothed = [data[0]]  # Initialize with the first data point
     for i in range(1, len(data)):
         smoothed.append(alpha * data[i] + (1 - alpha) * smoothed[-1])
@@ -916,15 +1072,23 @@ def proposed_model_eval(
     """
     Evaluate the proposed model on the test dataset.
 
-    Args:
-        model (ProposedModel): The trained model.
+    Parameters:
+        model (ProposedModel): The trained proposed model.
         test_dataloader (torch.utils.data.DataLoader): DataLoader for the test dataset.
-        tp_insulin (float): Peak time for insulin response.
+        tp_insulin_basal (float): Peak time for basal insulin response.
+        tp_insulin_bolus (float): Peak time for bolus insulin response.
         tp_meal (float): Peak time for meal response.
-        kernel_size (int): Time window size for the physiological model.
+        seq_len_carb_intake (int): Sequence length for carb intake.
+        seq_len_basal_insulin (int): Sequence length for basal insulin.
+        seq_len_bolus_insulin (int): Sequence length for bolus insulin.
+        interval (float): Time interval for the physiological model.
+        scaler (sklearn.preprocessing.StandardScaler): Scaler used for standardization.
+        device (torch.device): Device to run the model on (CPU or GPU).
+        ticks_per_day (int): Number of ticks per day for visualization.
+        time_steps (int): Total number of time steps in the dataset.
 
     Returns:
-        list: List of predictions for the test dataset.
+        tuple: A tuple containing predictions, truths, alarms, attention weights,
     """
     model = model.to(device)
     model.eval()
@@ -1034,7 +1198,20 @@ def proposed_model_eval(
 
 # ---- used to smooth the range weight ----
 def smooth_range_weight(bg, low=70.0, high=180.0, k=0.03, w_in=1.0, w_out=2.0):
+    """
+    Calculate the smooth range weight based on the background glucose values.
 
+    Parameters:
+        bg (torch.Tensor): Background glucose values.
+        low (float): Lower threshold for glucose values.
+        high (float): Upper threshold for glucose values.
+        k (float): Smoothing factor.
+        w_in (float): Weight for values within the range.
+        w_out (float): Weight for values outside the range.
+
+    Returns:
+        torch.Tensor: Smooth range weight.
+    """
     d_low = F.relu(low - bg)
     d_high = F.relu(bg - high)
     d = d_low + d_high
@@ -1045,7 +1222,14 @@ def smooth_range_weight(bg, low=70.0, high=180.0, k=0.03, w_in=1.0, w_out=2.0):
 # -----------Huber Loss and Asymmetric Huber Loss Functions-----------
 def huber_loss(e, delta=10.0):
     """
-    e = pred - truth
+    Huber loss function.
+
+    Parameters:
+        e (torch.Tensor): Prediction error (pred - truth).
+        delta (float): Threshold for the Huber loss.
+
+    Returns:
+        torch.Tensor: Huber loss value.
     """
     abs_e = torch.abs(e)
     quad = (
@@ -1061,7 +1245,16 @@ def huber_loss(e, delta=10.0):
 
 def asymmetric_huber_loss(e, delta=10.0, over_ratio=1.2, under_ratio=1.0):
     """
-    e = pred - truth
+    Asymmetric Huber loss function.
+
+    Parameters:
+        e (torch.Tensor): Prediction error (pred - truth).
+        delta (float): Threshold for the Huber loss.
+        over_ratio (float): Overestimation penalty ratio.
+        under_ratio (float): Underestimation penalty ratio.
+
+    Returns:
+        torch.Tensor: Asymmetric Huber loss value.
     """
     base = huber_loss(e, delta=delta)
     factor = torch.where(
@@ -1087,7 +1280,26 @@ def com_loss_function(
     w_out=3.0,
     lam_range=1.2,  # 1.4
 ):
+    """
+    Construct the customized loss function for the proposed model.
 
+    Parameters:
+        pred (torch.Tensor): Model predictions.
+        truth (torch.Tensor): Ground truth values.
+        ori_truth (torch.Tensor): Original ground truth values.
+        model (ProposedModel): The proposed model.
+        alpha (float): Loss weight for variance term.
+        beta (float): Loss weight for regularization term.
+        low (float): hypo threshold for glucose values.
+        high (float): hyper threshold for glucose values.
+        k (float): Smoothing factor for the range weight.
+        w_in (float): Weight for values within the range.
+        w_out (float): Weight for values outside the range.
+        lam_range (float): Weight for the range penalty term.
+
+    Returns:
+        torch.Tensor: Total loss value.
+    """
     # smooth_range_weight
     w_t = smooth_range_weight(
         ori_truth, low=low, high=high, k=k, w_in=w_in, w_out=w_out
@@ -1155,6 +1367,19 @@ def visualise_phy_layer(
     peak_time_carb,
     interval,
 ):
+    """
+    Visualise the data processed by the physiological layer.
+
+    Parameters:
+        data_type (str): Type of data ('train', 'val', 'test').
+        data_folder (str): Path to the folder containing the data.
+        p_num (int): Patient number to retrieve data for.
+        figure_folder (str): Path to the folder to save the figures.
+        peak_time_basal (int): Peak time for basal insulin response in minutes.
+        peak_time_bolus (int): Peak time for bolus insulin response in minutes.
+        peak_time_carb (int): Peak time for carbohydrate intake response in minutes.
+        interval (int): Time interval for the physiological model in minutes.
+    """
     train_plot = prep.get_data(
         data_type=data_type, folder_path=data_folder, p_num=p_num
     )
