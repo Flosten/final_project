@@ -1,4 +1,5 @@
 import numpy as np
+import scipy.stats as stats
 import torch
 import torch.nn.functional as F
 import tqdm
@@ -36,6 +37,46 @@ def calculate_rmse(predictions, targets):
     rmse = np.sqrt(mse)
 
     return rmse
+
+
+def calculate_threshold_rmse(
+    predictions, targets, hyper_threshold=180, hypo_threshold=70
+):
+    """
+    Calculate RMSE for hyperglycemia and hypoglycemia separately based on thresholds.
+
+    Args:
+        predictions (list): Predicted values.
+        targets (list): True values.
+        hyper_threshold (float): Threshold for hyperglycemia.
+        hypo_threshold (float): Threshold for hypoglycemia.
+
+    Returns:
+        tuple: RMSE for hyperglycemia and hypoglycemia.
+    """
+    predictions = np.array(predictions)
+    targets = np.array(targets)
+
+    hyper_mask = targets > hyper_threshold
+    hypo_mask = targets < hypo_threshold
+    thres_mask = hyper_mask | hypo_mask
+
+    if len(predictions[hyper_mask]) == 0 or len(targets[hyper_mask]) == 0:
+        hyper_rmse = np.nan
+    else:
+        hyper_rmse = calculate_rmse(predictions[hyper_mask], targets[hyper_mask])
+
+    if len(predictions[hypo_mask]) == 0 or len(targets[hypo_mask]) == 0:
+        hypo_rmse = np.nan
+    else:
+        hypo_rmse = calculate_rmse(predictions[hypo_mask], targets[hypo_mask])
+
+    if len(predictions[thres_mask]) == 0 or len(targets[thres_mask]) == 0:
+        thres_rmse = np.nan
+    else:
+        thres_rmse = calculate_rmse(predictions[thres_mask], targets[thres_mask])
+
+    return hyper_rmse, hypo_rmse, thres_rmse
 
 
 # upward dalay and downward delay (UD, DD)
@@ -154,6 +195,21 @@ def calculate_ud_dd(prediction, truth, ph):
     dd = np.mean(dd_list) if dd_list else None
 
     return ud, dd, ud_list, dd_list
+
+
+def calculate_fit(preds, truths):
+
+    y_pred = np.array(preds).flatten()
+    y_true = np.array(truths).flatten()
+
+    numerator = np.sum(np.linalg.norm(y_pred - y_true))
+    demominator = np.sum(np.linalg.norm(y_true - np.mean(y_true)))
+
+    if demominator == 0:
+        return np.nan
+
+    fit = 100 * (1 - numerator / demominator)
+    return fit
 
 
 # alarm system (F1 score)
@@ -277,6 +333,76 @@ def evaluate_alarm_multiclass(alarm, truth, dws, dwe, step=1, ph=60):
     return results
 
 
+# def describe_results(results):
+
+#     data = np.array(results)
+#     data = data[~np.isnan(data)]
+
+#     # normality test
+#     _, p_value = stats.shapiro(data)
+
+#     results_description = {}
+#     results_description["p_value"] = p_value
+
+#     if p_value > 0.05:  # normal distribution
+#         results_description["distribution"] = "Normal"
+#         results_description["mean"] = np.mean(data)
+#         results_description["std"] = np.std(data, ddof=1)
+
+#     else:  # non-normal distribution
+#         results_description["distribution"] = "Non-normal"
+#         results_description["median"] = np.median(data)
+#         q25, q75 = np.percentile(data, [25, 75])
+#         results_description["q25"] = q25
+#         results_description["q75"] = q75
+
+#     return results_description
+
+
+def describe_results(results):
+
+    data = np.array(results)
+    data = data[~np.isnan(data)]
+
+    # normality test
+    _, p_value = stats.shapiro(data)
+
+    results_description = {}
+    results_description["p_value"] = p_value
+
+    # only use mean and std for description
+    # results_description["distribution"] = "Normal"
+    results_description["mean"] = np.mean(data)
+    results_description["std"] = np.std(data, ddof=1)
+
+    return results_description
+
+
+# interpretability (SHAP) proposed model and ablation study (loss function)
+def combine_directional(attr_ori, attr_physio, eps=1e-8):
+    """
+    Combine origin + physio SHAP attributions using directional weighting.
+
+    Parameters
+    ----------
+    attr_ori : np.ndarray
+        SHAP values from origin feature
+    attr_physio : np.ndarray
+        SHAP values from physio feature
+    eps : float
+        Small value to avoid division by zero
+
+    Returns
+    -------
+    combined : np.ndarray
+        Directionally weighted SHAP values (with sign)
+    """
+    numerator = attr_ori * np.abs(attr_ori) + attr_physio * np.abs(attr_physio)
+    denominator = np.abs(attr_ori) + np.abs(attr_physio) + eps
+    combined = numerator / denominator
+    return combined
+
+
 def calculate_shap_proposed(
     model,
     dataloader,
@@ -287,15 +413,209 @@ def calculate_shap_proposed(
     seq_len_bolus_insulin,
     seq_len_carb_intake,
     interval,
-    max_samples=30,
-    n_samples=15,
+    max_samples=10,
+    n_samples=1,  # 15
 ):
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = model.to(device)
     model.eval()
 
-    # 时间转换为步长
+    # transform peak time to time interval
+    tp_insulin_basal /= interval
+    tp_insulin_bolus /= interval
+    tp_meal /= interval
+
+    kernel_size_basal = seq_len_basal_insulin / interval
+    kernel_size_bolus = seq_len_bolus_insulin / interval
+    kernel_size_meal = seq_len_carb_intake / interval
+
+    (
+        attr_cgm,
+        attr_basal,
+        attr_bolus,
+        attr_meal,
+        attr_basal_phy,
+        attr_bolus_phy,
+        attr_meal_phy,
+    ) = ([], [], [], [], [], [], [])
+    cgm_values, basal_values, bolus_values, meal_values = [], [], [], []
+    count = 0
+
+    sv = ShapleyValueSampling(
+        lambda cgm, basal_ori, bolus_ori, meal_ori, basal, bolus, meal: model(
+            cgm, basal_ori, bolus_ori, meal_ori, basal, bolus, meal
+        )[0]
+    )
+
+    for x, _, _ in dataloader:
+        if count >= max_samples:
+            break
+
+        # data to device
+        cgm = x["cgm"].to(device)  # (batch, seq_len)
+        basal = x["current_basal"].to(device)
+        bolus = x["current_bolus"].to(device)
+        meal = x["carb_intake"].to(device)
+
+        # physiological layer
+        basal_processed = physiological_layer(basal, tp_insulin_basal, 1000).unsqueeze(
+            2
+        )
+        bolus_processed = physiological_layer(bolus, tp_insulin_bolus, 1000).unsqueeze(
+            2
+        )
+        meal_processed = physiological_layer(meal, tp_meal, 1000).unsqueeze(2)
+
+        # preprocess data
+        cgm = cgm.unsqueeze(2)
+        basal = basal.unsqueeze(2)
+        bolus = bolus.unsqueeze(2)
+        meal = meal.unsqueeze(2)
+        basal_last = basal_processed
+        bolus_last = bolus_processed
+        meal_last = meal_processed
+
+        # append input values
+        cgm_values.append(cgm.detach().cpu().numpy())
+        basal_values.append(basal_last.detach().cpu().numpy())
+        bolus_values.append(bolus_last.detach().cpu().numpy())
+        meal_values.append(meal_last.detach().cpu().numpy())
+
+        # baseline
+        baseline = (
+            torch.zeros_like(cgm),
+            torch.zeros_like(basal),
+            torch.zeros_like(bolus),
+            torch.zeros_like(meal),
+            torch.zeros_like(basal_last),
+            torch.zeros_like(bolus_last),
+            torch.zeros_like(meal_last),
+        )
+
+        # attribution calculation
+        attribution = sv.attribute(
+            inputs=(cgm, basal, bolus, meal, basal_last, bolus_last, meal_last),
+            n_samples=n_samples,
+            baselines=baseline,
+        )
+
+        # print(f"Attribution shapes: {[a.shape for a in attribution]}")
+
+        # attr_cgm.append(attribution[0].detach().cpu().numpy())
+        # attr_basal.append(attribution[1].detach().cpu().numpy())
+        # attr_bolus.append(attribution[2].detach().cpu().numpy())
+        # attr_meal.append(attribution[3].detach().cpu().numpy())
+
+        attr_cgm_batch = attribution[0].detach().cpu().numpy()
+        mean_cgm = attr_cgm_batch.sum(axis=2, keepdims=True)
+        cgm_shape = (mean_cgm.shape[0], 1, attribution[0].shape[2], 1)
+        attr_cgm.append(np.broadcast_to(mean_cgm, cgm_shape))
+
+        attr_basal_batch = attribution[1].detach().cpu().numpy()
+        mean_basal = attr_basal_batch.sum(axis=2, keepdims=True)
+        basal_shape = (mean_basal.shape[0], 1, attribution[1].shape[2], 1)
+        attr_basal.append(np.broadcast_to(mean_basal, basal_shape))
+
+        attr_bolus_batch = attribution[2].detach().cpu().numpy()
+        mean_bolus = attr_bolus_batch.sum(axis=2, keepdims=True)
+        bolus_shape = (mean_bolus.shape[0], 1, attribution[2].shape[2], 1)
+        attr_bolus.append(np.broadcast_to(mean_bolus, bolus_shape))
+
+        attr_meal_batch = attribution[3].detach().cpu().numpy()
+        mean_meal = attr_meal_batch.sum(axis=2, keepdims=True)
+        meal_shape = (mean_meal.shape[0], 1, attribution[3].shape[2], 1)
+        attr_meal.append(np.broadcast_to(mean_meal, meal_shape))
+
+        # attribution for preprocessed input values
+        attr_basal_phy_batch = attribution[4].detach().cpu().numpy()
+        mean_basal_phy = attr_basal_phy_batch.sum(axis=2, keepdims=True)
+        basal_phy_shape = (mean_basal_phy.shape[0], 1, attribution[4].shape[2], 1)
+        attr_basal_phy.append(np.broadcast_to(mean_basal_phy, basal_phy_shape))
+
+        attr_bolus_phy_batch = attribution[5].detach().cpu().numpy()
+        mean_bolus_phy = attr_bolus_phy_batch.sum(axis=2, keepdims=True)
+        bolus_phy_shape = (mean_bolus_phy.shape[0], 1, attribution[5].shape[2], 1)
+        attr_bolus_phy.append(np.broadcast_to(mean_bolus_phy, bolus_phy_shape))
+
+        attr_meal_phy_batch = attribution[6].detach().cpu().numpy()
+        mean_meal_phy = attr_meal_phy_batch.sum(axis=2, keepdims=True)
+        meal_phy_shape = (mean_meal_phy.shape[0], 1, attribution[6].shape[2], 1)
+        attr_meal_phy.append(np.broadcast_to(mean_meal_phy, meal_phy_shape))
+
+        count += 1
+
+    # concatenate the attribution values and input values
+    attr_cgm = np.concatenate(attr_cgm, axis=0)
+    attr_basal = np.concatenate(attr_basal, axis=0)
+    attr_bolus = np.concatenate(attr_bolus, axis=0)
+    attr_meal = np.concatenate(attr_meal, axis=0)
+    attr_basal_phy = np.concatenate(attr_basal_phy, axis=0)
+    attr_bolus_phy = np.concatenate(attr_bolus_phy, axis=0)
+    attr_meal_phy = np.concatenate(attr_meal_phy, axis=0)
+
+    # print(
+    #     f"Attribution shapes: {attr_cgm.shape}, {attr_basal.shape}, {attr_bolus.shape}, {attr_meal.shape}"
+    # )
+
+    # total insulin basal, insulin bolus, and carb intake attribution values
+    attr_basal = combine_directional(attr_basal, attr_basal_phy)
+    attr_bolus = combine_directional(
+        attr_bolus, attr_bolus_phy
+    )  # no need to combine, only physio layer
+    attr_meal = combine_directional(attr_meal, attr_meal_phy)
+
+    cgm_values = np.concatenate(cgm_values, axis=0)
+    basal_values = np.concatenate(basal_values, axis=0)
+    bolus_values = np.concatenate(bolus_values, axis=0)
+    meal_values = np.concatenate(meal_values, axis=0)
+    print(
+        f"Input shapes: {cgm_values.shape}, {basal_values.shape}, {bolus_values.shape}, {meal_values.shape}"
+    )
+
+    # average the attribution values across sequence length
+    fig, ax = vis.plot_interpretability(
+        attr_cgm[:, :, -1, :],  # only take the last frame
+        attr_meal[:, :, -1, :],
+        attr_basal[:, :, -1, :],
+        attr_bolus[:, :, -1, :],
+        cgm_values=cgm_values[:, -1, :],  # only take the last frame
+        carb_values=meal_values[:, -1, :],
+        basal_values=basal_values[:, -1, :],
+        bolus_values=bolus_values[:, -1, :],
+    )
+
+    # record the attribution values
+    shap_per_patient = {
+        "CGM": attr_cgm[:, :, -1, :].reshape(-1),
+        "Carb Intake": attr_meal[:, :, -1, :].reshape(-1),
+        "Insulin Basal": attr_basal[:, :, -1, :].reshape(-1),
+        "Insulin Bolus": attr_bolus[:, :, -1, :].reshape(-1),
+    }
+
+    return fig, ax, shap_per_patient
+
+
+# interpretability (SHAP) proposed model without physiological layer
+def calculate_shap_proposed_no_phy(
+    model,
+    dataloader,
+    tp_insulin_basal,
+    tp_insulin_bolus,
+    tp_meal,
+    seq_len_basal_insulin,
+    seq_len_bolus_insulin,
+    seq_len_carb_intake,
+    interval,
+    max_samples=10,
+    n_samples=10,  # 15
+):
+
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model = model.to(device)
+    model.eval()
+
+    # transform peak time to time interval
     tp_insulin_basal /= interval
     tp_insulin_bolus /= interval
     tp_meal /= interval
@@ -316,38 +636,25 @@ def calculate_shap_proposed(
         if count >= max_samples:
             break
 
-        # === 数据读取与处理 ===
+        # data to device
         cgm = x["cgm"].to(device)  # (batch, seq_len)
         basal = x["current_basal"].to(device)
         bolus = x["current_bolus"].to(device)
         meal = x["carb_intake"].to(device)
 
-        # === physiological layer 处理 ===
-        basal_processed = physiological_layer(
-            basal, tp_insulin_basal, kernel_size_basal
-        ).unsqueeze(2)
-        bolus_processed = physiological_layer(
-            bolus, tp_insulin_bolus, kernel_size_bolus
-        ).unsqueeze(2)
-        meal_processed = physiological_layer(meal, tp_meal, kernel_size_meal).unsqueeze(
-            2
-        )
-
-        # CGM 保持整段序列，扩展维度 (batch, seq_len, 1)
+        # preprocess data
         cgm = cgm.unsqueeze(2)
+        basal_last = basal.unsqueeze(2)
+        bolus_last = bolus.unsqueeze(2)
+        meal_last = meal.unsqueeze(2)
 
-        # 只取 insulin/meal 的最后一帧（保持 3D）
-        basal_last = basal_processed
-        bolus_last = bolus_processed
-        meal_last = meal_processed
-
-        # 保存输入值用于后续可视化
-        cgm_values.append(cgm.detach().cpu().numpy())  # 全序列
-        basal_values.append(basal_last.detach().cpu().numpy())  # 最后一步
+        # append input values
+        cgm_values.append(cgm.detach().cpu().numpy())
+        basal_values.append(basal_last.detach().cpu().numpy())
         bolus_values.append(bolus_last.detach().cpu().numpy())
         meal_values.append(meal_last.detach().cpu().numpy())
 
-        # 构造 baseline（与 inputs 同形状）
+        # baseline
         baseline = (
             torch.zeros_like(cgm),
             torch.zeros_like(basal_last),
@@ -355,7 +662,7 @@ def calculate_shap_proposed(
             torch.zeros_like(meal_last),
         )
 
-        # attribution 计算
+        # attribution calculation
         attribution = sv.attribute(
             inputs=(cgm, basal_last, bolus_last, meal_last),
             n_samples=n_samples,
@@ -389,293 +696,54 @@ def calculate_shap_proposed(
         meal_shape = (mean_meal.shape[0], 1, attribution[3].shape[2], 1)
         attr_meal.append(np.broadcast_to(mean_meal, meal_shape))
 
-        count += cgm.shape[0]
+        count += 1
 
-    # 拼接输出
+    # concatenate the attribution values and input values
     attr_cgm = np.concatenate(attr_cgm, axis=0)
     attr_basal = np.concatenate(attr_basal, axis=0)
     attr_bolus = np.concatenate(attr_bolus, axis=0)
     attr_meal = np.concatenate(attr_meal, axis=0)
+    print(
+        f"Attribution shapes: {attr_cgm.shape}, {attr_basal.shape}, {attr_bolus.shape}, {attr_meal.shape}"
+    )
 
-    cgm_values = np.concatenate(cgm_values, axis=0)
-    basal_values = np.concatenate(basal_values, axis=0)
-    bolus_values = np.concatenate(bolus_values, axis=0)
-    meal_values = np.concatenate(meal_values, axis=0)
+    cgm_values = np.concatenate(cgm_values, axis=0).sum(axis=1, keepdims=True)
+    basal_values = np.concatenate(basal_values, axis=0).sum(axis=1, keepdims=True)
+    bolus_values = np.concatenate(bolus_values, axis=0).sum(axis=1, keepdims=True)
+    meal_values = np.concatenate(meal_values, axis=0).sum(axis=1, keepdims=True)
+    print(
+        f"Input shapes: {cgm_values.shape}, {basal_values.shape}, {bolus_values.shape}, {meal_values.shape}"
+    )
 
-    # 可视化
+    # average the attribution values across sequence length
     fig, ax = vis.plot_interpretability(
-        attr_cgm,
-        attr_meal,
-        attr_basal,
-        attr_bolus,
-        cgm_values=cgm_values,
-        carb_values=meal_values,
-        basal_values=basal_values,
-        bolus_values=bolus_values,
+        attr_cgm[:, :, -1, :],  # only take the last frame
+        attr_meal[:, :, -1, :],
+        attr_basal[:, :, -1, :],
+        attr_bolus[:, :, -1, :],
+        cgm_values=cgm_values[:, -1, :],  # only take the last frame
+        carb_values=meal_values[:, -1, :],
+        basal_values=basal_values[:, -1, :],
+        bolus_values=bolus_values[:, -1, :],
     )
 
-    return fig, ax
+    # record the attribution values
+    shap_per_patient = {
+        "CGM": attr_cgm[:, :, -1, :].reshape(-1),
+        "Carb Intake": attr_meal[:, :, -1, :].reshape(-1),
+        "Insulin Basal": attr_basal[:, :, -1, :].reshape(-1),
+        "Insulin Bolus": attr_bolus[:, :, -1, :].reshape(-1),
+    }
+
+    return fig, ax, shap_per_patient
 
 
-def calculate_shap_proposed_no_attention(
-    model,
-    dataloader,
-    tp_insulin_basal,
-    tp_insulin_bolus,
-    tp_meal,
-    seq_len_basal_insulin,
-    seq_len_bolus_insulin,
-    seq_len_carb_intake,
-    interval,
-    max_samples=30,
-    n_samples=15,
-    target=None,  # 如果模型输出是多维，建议传具体解释维度，例如 0
-):
-    import numpy as np
-    import torch
-    from captum.attr import ShapleyValueSampling
-
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model = model.to(device)
-    model.eval()
-
-    # 时间->步长
-    tp_insulin_basal = tp_insulin_basal / interval
-    tp_insulin_bolus = tp_insulin_bolus / interval
-    tp_meal = tp_meal / interval
-
-    # 窗口转整数
-    kernel_size_basal = int(round(seq_len_basal_insulin / interval))
-    kernel_size_bolus = int(round(seq_len_bolus_insulin / interval))
-    kernel_size_meal = int(round(seq_len_carb_intake / interval))
-
-    # 容器（保留整段，用于方案B可视化）
-    attr_cgm_list, attr_basal_list, attr_bolus_list, attr_meal_list = [], [], [], []
-    cgm_vals_list, basal_vals_list, bolus_vals_list, meal_vals_list = [], [], [], []
-
-    counted = 0
-
-    # 正确的前向函数：返回整个 batch 输出；target 用 attribute 时指定
-    sv = ShapleyValueSampling(
-        lambda cgm, basal, bolus, meal: model(cgm, basal, bolus, meal)
-    )
-
-    for x, _, _ in dataloader:
-        if counted >= max_samples:
-            break
-
-        # === 数据读取（整段序列） ===
-        cgm = x["cgm"].to(device)  # (B, L)
-        basal = x["current_basal"].to(device)  # (B, L)
-        bolus = x["current_bolus"].to(device)  # (B, L)
-        meal = x["carb_intake"].to(device)  # (B, L)
-
-        # 形状扩展到 (B, L, 1)，与训练保持一致
-        cgm = cgm.unsqueeze(2)  # (B, L, 1)
-        basal = physiological_layer(
-            basal, tp_insulin_basal, kernel_size_basal
-        ).unsqueeze(
-            2
-        )  # (B, L, 1)
-        bolus = physiological_layer(
-            bolus, tp_insulin_bolus, kernel_size_bolus
-        ).unsqueeze(
-            2
-        )  # (B, L, 1)
-        meal = physiological_layer(meal, tp_meal, kernel_size_meal).unsqueeze(
-            2
-        )  # (B, L, 1)
-
-        basal = basal[:, -1:, :]
-        bolus = bolus[:, -1:, :]
-        meal = meal[:, -1:, :]
-
-        # 保存输入（整段，方案B用）
-        cgm_vals_list.append(cgm.detach().cpu().numpy())
-        basal_vals_list.append(basal.detach().cpu().numpy())
-        bolus_vals_list.append(bolus.detach().cpu().numpy())
-        meal_vals_list.append(meal.detach().cpu().numpy())
-
-        # baseline（同形状）
-        baseline = (
-            torch.zeros_like(cgm),
-            torch.zeros_like(basal),
-            torch.zeros_like(bolus),
-            torch.zeros_like(meal),
-        )
-
-        # 归因：指定 target（如果需要）
-        if target is None:
-            attribution = sv.attribute(
-                inputs=(cgm, basal, bolus, meal),
-                n_samples=n_samples,
-                baselines=baseline,
-            )
-        else:
-            attribution = sv.attribute(
-                inputs=(cgm, basal, bolus, meal),
-                n_samples=n_samples,
-                baselines=baseline,
-                target=target,
-            )
-
-        attr_cgm_list.append(attribution[0].detach().cpu().numpy())
-        attr_basal_list.append(attribution[1].detach().cpu().numpy())
-        attr_bolus_list.append(attribution[2].detach().cpu().numpy())
-        attr_meal_list.append(attribution[3].detach().cpu().numpy())
-
-        counted += cgm.shape[0]
-
-    # 拼接 batch 维；得到形状 (N, L, 1)
-    import numpy as np
-
-    attr_cgm = np.concatenate(attr_cgm_list, axis=0)
-    attr_basal = np.concatenate(attr_basal_list, axis=0)
-    attr_bolus = np.concatenate(attr_bolus_list, axis=0)
-    attr_meal = np.concatenate(attr_meal_list, axis=0)
-
-    cgm_values = np.concatenate(cgm_vals_list, axis=0)
-    basal_values = np.concatenate(basal_vals_list, axis=0)
-    bolus_values = np.concatenate(bolus_vals_list, axis=0)
-    meal_values = np.concatenate(meal_vals_list, axis=0)
-
-    # 直接把“整段（N,L,1）”交给可视化（方案B 会在里面展平为 N*L 个点）
-    fig, ax = vis.plot_interpretability(
-        attr_cgm,
-        attr_meal,
-        attr_basal,
-        attr_bolus,
-        cgm_values=cgm_values,
-        carb_values=meal_values,
-        basal_values=basal_values,
-        bolus_values=bolus_values,
-    )
-
-    return fig, ax
-
-
-def calculate_shap_proposed_with_phy(
-    model,
-    dataloader,
-    tp_insulin_basal,
-    tp_insulin_bolus,
-    tp_meal,
-    seq_len_basal_insulin,
-    seq_len_bolus_insulin,
-    seq_len_carb_intake,
-    interval,
-    max_samples=30,
-    n_samples=15,
-):
-
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model = model.to(device)
-    model.eval()
-
-    # 时间转换为步长
-    tp_insulin_basal /= interval
-    tp_insulin_bolus /= interval
-    tp_meal /= interval
-
-    kernel_size_basal = seq_len_basal_insulin / interval
-    kernel_size_bolus = seq_len_bolus_insulin / interval
-    kernel_size_meal = seq_len_carb_intake / interval
-
-    attr_cgm, attr_basal, attr_bolus, attr_meal = [], [], [], []
-    cgm_values, basal_values, bolus_values, meal_values = [], [], [], []
-    count = 0
-
-    sv = ShapleyValueSampling(
-        lambda cgm, basal, bolus, meal: model(cgm, basal, bolus, meal)[0]
-    )
-
-    for x, _, _ in dataloader:
-        if count >= max_samples:
-            break
-
-        # === 数据读取与处理 ===
-        cgm = x["cgm"].to(device)  # (batch, seq_len)
-        basal = x["current_basal"].to(device)
-        bolus = x["current_bolus"].to(device)
-        meal = x["carb_intake"].to(device)
-
-        # === physiological layer 处理 ===
-        basal_processed = physiological_layer(
-            basal, tp_insulin_basal, kernel_size_basal
-        ).unsqueeze(2)
-        bolus_processed = physiological_layer(
-            bolus, tp_insulin_bolus, kernel_size_bolus
-        ).unsqueeze(2)
-        meal_processed = physiological_layer(meal, tp_meal, kernel_size_meal).unsqueeze(
-            2
-        )
-
-        # CGM 保持整段序列，扩展维度 (batch, seq_len, 1)
-        cgm = cgm.unsqueeze(2)
-
-        # 只取 insulin/meal 的最后一帧（保持 3D）
-        basal_last = basal_processed[:, -1:, :]
-        bolus_last = bolus_processed[:, -1:, :]
-        meal_last = meal_processed[:, -1:, :]
-
-        # 保存输入值用于后续可视化
-        cgm_values.append(cgm.detach().cpu().numpy())  # 全序列
-        basal_values.append(basal_last.detach().cpu().numpy())  # 最后一步
-        bolus_values.append(bolus_last.detach().cpu().numpy())
-        meal_values.append(meal_last.detach().cpu().numpy())
-
-        # 构造 baseline（与 inputs 同形状）
-        baseline = (
-            torch.zeros_like(cgm),
-            torch.zeros_like(basal_last),
-            torch.zeros_like(bolus_last),
-            torch.zeros_like(meal_last),
-        )
-
-        # attribution 计算
-        attribution = sv.attribute(
-            inputs=(cgm, basal_last, bolus_last, meal_last),
-            n_samples=n_samples,
-            baselines=baseline,
-        )
-
-        attr_cgm.append(attribution[0].detach().cpu().numpy())
-        attr_basal.append(attribution[1].detach().cpu().numpy())
-        attr_bolus.append(attribution[2].detach().cpu().numpy())
-        attr_meal.append(attribution[3].detach().cpu().numpy())
-
-        count += cgm.shape[0]
-
-    # 拼接输出
-    attr_cgm = np.concatenate(attr_cgm, axis=0)
-    attr_basal = np.concatenate(attr_basal, axis=0)
-    attr_bolus = np.concatenate(attr_bolus, axis=0)
-    attr_meal = np.concatenate(attr_meal, axis=0)
-
-    cgm_values = np.concatenate(cgm_values, axis=0)
-    basal_values = np.concatenate(basal_values, axis=0)
-    bolus_values = np.concatenate(bolus_values, axis=0)
-    meal_values = np.concatenate(meal_values, axis=0)
-
-    # 可视化
-    fig, ax = vis.plot_interpretability(
-        attr_cgm,
-        attr_meal,
-        attr_basal,
-        attr_bolus,
-        cgm_values=cgm_values,
-        carb_values=meal_values,
-        basal_values=basal_values,
-        bolus_values=bolus_values,
-    )
-
-
-# interpretability (SHAP values / integrated gradients)
+# interpretability baseline
 def calculate_shap_for_4channels(
     model,
     dataloader,
-    max_samples=30,
-    n_samples=15,
+    max_samples=10,
+    n_samples=10,
 ):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = WrapperModel(model).to(device)  # wrap the model
@@ -712,17 +780,37 @@ def calculate_shap_for_4channels(
         )
 
         # append attribution values and input values
-        attr_cgm.append(attribution[0].detach().cpu().numpy())
-        attr_carb.append(attribution[1].detach().cpu().numpy())
-        attr_basal.append(attribution[2].detach().cpu().numpy())
-        attr_bolus.append(attribution[3].detach().cpu().numpy())
+        # attr_cgm.append(attribution[0].detach().cpu().numpy())
+        # attr_carb.append(attribution[1].detach().cpu().numpy())
+        # attr_basal.append(attribution[2].detach().cpu().numpy())
+        # attr_bolus.append(attribution[3].detach().cpu().numpy())
+
+        attr_cgm_batch = attribution[0].detach().cpu().numpy()
+        mean_cgm = attr_cgm_batch.sum(axis=2, keepdims=True)
+        cgm_shape = (mean_cgm.shape[0], 1, attribution[0].shape[2], 1)
+        attr_cgm.append(np.broadcast_to(mean_cgm, cgm_shape))
+
+        attr_basal_batch = attribution[1].detach().cpu().numpy()
+        mean_basal = attr_basal_batch.sum(axis=2, keepdims=True)
+        basal_shape = (mean_basal.shape[0], 1, attribution[1].shape[2], 1)
+        attr_basal.append(np.broadcast_to(mean_basal, basal_shape))
+
+        attr_bolus_batch = attribution[2].detach().cpu().numpy()
+        mean_bolus = attr_bolus_batch.sum(axis=2, keepdims=True)
+        bolus_shape = (mean_bolus.shape[0], 1, attribution[2].shape[2], 1)
+        attr_bolus.append(np.broadcast_to(mean_bolus, bolus_shape))
+
+        attr_meal_batch = attribution[3].detach().cpu().numpy()
+        mean_meal = attr_meal_batch.sum(axis=2, keepdims=True)
+        meal_shape = (mean_meal.shape[0], 1, attribution[3].shape[2], 1)
+        attr_carb.append(np.broadcast_to(mean_meal, meal_shape))
 
         cgm_values.append(cgm.detach().cpu().numpy())
         carb_values.append(carb.detach().cpu().numpy())
         basal_values.append(basal.detach().cpu().numpy())
         bolus_values.append(bolus.detach().cpu().numpy())
 
-        count += cgm.shape[0]
+        count += 1
 
     # concatenate the attribution values and input values
     attr_cgm = np.concatenate(attr_cgm, axis=0)
@@ -730,24 +818,32 @@ def calculate_shap_for_4channels(
     attr_basal = np.concatenate(attr_basal, axis=0)
     attr_bolus = np.concatenate(attr_bolus, axis=0)
 
-    cgm_values = np.concatenate(cgm_values, axis=0)
-    carb_values = np.concatenate(carb_values, axis=0)
-    basal_values = np.concatenate(basal_values, axis=0)
-    bolus_values = np.concatenate(bolus_values, axis=0)
+    cgm_values = np.concatenate(cgm_values, axis=0).sum(axis=1, keepdims=True)
+    carb_values = np.concatenate(carb_values, axis=0).sum(axis=1, keepdims=True)
+    basal_values = np.concatenate(basal_values, axis=0).sum(axis=1, keepdims=True)
+    bolus_values = np.concatenate(bolus_values, axis=0).sum(axis=1, keepdims=True)
 
     # average the attribution values across sequence length
     fig, ax = vis.plot_interpretability(
-        attr_cgm,
-        attr_carb,
-        attr_basal,
-        attr_bolus,
-        cgm_values,
-        carb_values,
-        basal_values,
-        bolus_values,
+        attr_cgm[:, :, -1, :],  # only take the last frame
+        attr_carb[:, :, -1, :],
+        attr_basal[:, :, -1, :],
+        attr_bolus[:, :, -1, :],
+        cgm_values[:, -1, :],  # only take the last frame
+        carb_values[:, -1, :],
+        basal_values[:, -1, :],
+        bolus_values[:, -1, :],  # only take the last frame
     )
 
-    return fig, ax
+    # record the attribution values
+    shap_per_patient = {
+        "CGM": attr_cgm[:, :, -1, :].reshape(-1),
+        "Carb Intake": attr_carb[:, :, -1, :].reshape(-1),
+        "Insulin Basal": attr_basal[:, :, -1, :].reshape(-1),
+        "Insulin Bolus": attr_bolus[:, :, -1, :].reshape(-1),
+    }
+
+    return fig, ax, shap_per_patient
 
 
 def min_max_normalization(data):
@@ -760,22 +856,14 @@ def min_max_normalization(data):
 def physiological_layer(input_seq, lamda, kernel_size):
     """
     Applies the physiological layer to preprocess the insulin and meal data.
-
-    Args:
-        input_seq (torch.Tensor): The input sequence (insulin & meal) [batch_size, seq_length].
-        lamda (float): The peak time of the physiological response (peak time/ time interval).
-        kernel_size (int): The time window size for the physiological model.
-
-    Returns:
-        torch.Tensor: The processed output sequence.
     """
     # Create a kernel based on the physiological model
     t = torch.arange(0, kernel_size).float()
     kernel = (t / lamda**2) * torch.exp(-t / lamda)
     kernel = kernel / torch.sum(kernel)
-    kernel = kernel.view(1, 1, -1).to(
-        input_seq.device
-    )  # Reshape to (1, 1, kernel_size)
+    kernel = kernel.view(1, 1, -1).to(input_seq.device)  # (1,1,K)
+
+    kernel = torch.flip(kernel, dims=[-1])
 
     input_seq = input_seq.float()
     input_seq = input_seq.unsqueeze(1)  # Add channel dimension
@@ -784,7 +872,7 @@ def physiological_layer(input_seq, lamda, kernel_size):
     padding = int(kernel_size) - 1
     input_seq = F.pad(input_seq, (padding, 0), mode="constant", value=0)
 
-    # Apply the convolution
+    # Apply the convolution (strict convolution after kernel flip)
     output_seq = F.conv1d(input_seq, kernel)
     output_seq = output_seq.squeeze(1)  # Remove channel dimension
 
