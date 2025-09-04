@@ -416,6 +416,33 @@ def evaluate_alarm_multiclass(alarm, truth, dws, dwe, step=1, ph=60):
 #     return results_description
 
 
+# def describe_results(results):
+#     """
+#     Describe the results for the group study.
+
+#     Parameters:
+#         results (list): List of results to describe.
+
+#     Returns:
+#         dict: Dictionary containing the description of the results.
+#     """
+#     data = np.array(results)
+#     data = data[~np.isnan(data)]
+
+#     # normality test
+#     _, p_value = stats.shapiro(data)
+
+#     results_description = {}
+#     results_description["p_value"] = p_value
+
+#     # only use mean and std for description
+#     # results_description["distribution"] = "Normal"
+#     results_description["mean"] = np.mean(data)
+#     results_description["std"] = np.std(data, ddof=1)
+
+#     return results_description
+
+
 def describe_results(results):
     """
     Describe the results for the group study.
@@ -426,21 +453,29 @@ def describe_results(results):
     Returns:
         dict: Dictionary containing the description of the results.
     """
-    data = np.array(results)
-    data = data[~np.isnan(data)]
+    if isinstance(results[0], dict):
+        summary = {}
+        for group in results[0].keys():
+            summary[group] = {}
+            for metric in results[0][group].keys():
+                values = [
+                    r[group][metric] for r in results if r[group][metric] is not None
+                ]
+                arr = np.array(values, dtype=float)
+                arr = arr[~np.isnan(arr)]
+                summary[group][metric] = {
+                    "mean": float(np.mean(arr)),
+                    "std": float(np.std(arr, ddof=1)),
+                }
+    else:
+        arr = np.array(results, dtype=float)
+        arr = arr[~np.isnan(arr)]
+        summary = {
+            "mean": float(np.mean(arr)),
+            "std": float(np.std(arr, ddof=1)),
+        }
 
-    # normality test
-    _, p_value = stats.shapiro(data)
-
-    results_description = {}
-    results_description["p_value"] = p_value
-
-    # only use mean and std for description
-    # results_description["distribution"] = "Normal"
-    results_description["mean"] = np.mean(data)
-    results_description["std"] = np.std(data, ddof=1)
-
-    return results_description
+    return summary
 
 
 # interpretability (SHAP) proposed model and ablation study (loss function)
@@ -473,7 +508,7 @@ def calculate_shap_proposed(
     seq_len_carb_intake,
     interval,
     max_samples=10,
-    n_samples=10,  # 15
+    n_samples=5,  # 15
 ):
     """
     Calculate SHAP values for the proposed model with physiological layer.
@@ -685,7 +720,7 @@ def calculate_shap_proposed_no_phy(
     seq_len_carb_intake,
     interval,
     max_samples=10,
-    n_samples=10,  # 15
+    n_samples=5,  # 15
 ):
     """
     Calculate SHAP values for the proposed model without physiological layer (ablation study).
@@ -833,12 +868,181 @@ def calculate_shap_proposed_no_phy(
     return fig, ax, shap_per_patient
 
 
+# interpretability (SHAP) proposed model without physiological layer
+def calculate_shap_proposed_no_dual_input(
+    model,
+    dataloader,
+    tp_insulin_basal,
+    tp_insulin_bolus,
+    tp_meal,
+    seq_len_basal_insulin,
+    seq_len_bolus_insulin,
+    seq_len_carb_intake,
+    interval,
+    max_samples=10,
+    n_samples=5,  # 15
+):
+    """
+    Calculate SHAP values for the proposed model without dual input (ablation study).
+
+    Parameters:
+        model (torch.nn.Module): The trained model.
+        dataloader (torch.utils.data.DataLoader): DataLoader for the dataset.
+        tp_insulin_basal (float): Peak time for insulin basal.
+        tp_insulin_bolus (float): Peak time for insulin bolus.
+        tp_meal (float): Peak time for carb intake.
+        seq_len_basal_insulin (int): Sequence length for basal insulin.
+        seq_len_bolus_insulin (int): Sequence length for bolus insulin.
+        seq_len_carb_intake (int): Sequence length for carb intake.
+        interval (int): Time interval in seconds.
+        max_samples (int): Maximum number of samples to process.
+        n_samples (int): Number of samples for SHAP calculation.
+
+    Returns:
+        tuple: Figure, axes, and SHAP values per patient.
+    """
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model = model.to(device)
+    model.eval()
+
+    # transform peak time to time interval
+    tp_insulin_basal /= interval
+    tp_insulin_bolus /= interval
+    tp_meal /= interval
+
+    kernel_size_basal = seq_len_basal_insulin / interval
+    kernel_size_bolus = seq_len_bolus_insulin / interval
+    kernel_size_meal = seq_len_carb_intake / interval
+
+    attr_cgm, attr_basal, attr_bolus, attr_meal = [], [], [], []
+    cgm_values, basal_values, bolus_values, meal_values = [], [], [], []
+    count = 0
+
+    sv = ShapleyValueSampling(
+        lambda cgm, basal, bolus, meal: model(cgm, basal, bolus, meal)[0]
+    )
+
+    for x, _, _ in dataloader:
+        if count >= max_samples:
+            break
+
+        # data to device
+        cgm = x["cgm"].to(device)  # (batch, seq_len)
+        basal = x["current_basal"].to(device)
+        bolus = x["current_bolus"].to(device)
+        meal = x["carb_intake"].to(device)
+
+        # physiological layer
+        basal_processed = physiological_layer(basal, tp_insulin_basal, 1000).unsqueeze(
+            2
+        )
+        bolus_processed = physiological_layer(bolus, tp_insulin_bolus, 1000).unsqueeze(
+            2
+        )
+        meal_processed = physiological_layer(meal, tp_meal, 1000).unsqueeze(2)
+
+        # preprocess data
+        cgm = cgm.unsqueeze(2)
+        basal_last = basal_processed
+        bolus_last = bolus_processed
+        meal_last = meal_processed
+
+        # append input values
+        cgm_values.append(cgm.detach().cpu().numpy())
+        basal_values.append(basal_last.detach().cpu().numpy())
+        bolus_values.append(bolus_last.detach().cpu().numpy())
+        meal_values.append(meal_last.detach().cpu().numpy())
+
+        # baseline
+        baseline = (
+            torch.zeros_like(cgm),
+            torch.zeros_like(basal_last),
+            torch.zeros_like(bolus_last),
+            torch.zeros_like(meal_last),
+        )
+
+        # attribution calculation
+        attribution = sv.attribute(
+            inputs=(cgm, basal_last, bolus_last, meal_last),
+            n_samples=n_samples,
+            baselines=baseline,
+        )
+
+        # print(f"Attribution shapes: {[a.shape for a in attribution]}")
+
+        # attr_cgm.append(attribution[0].detach().cpu().numpy())
+        # attr_basal.append(attribution[1].detach().cpu().numpy())
+        # attr_bolus.append(attribution[2].detach().cpu().numpy())
+        # attr_meal.append(attribution[3].detach().cpu().numpy())
+
+        attr_cgm_batch = attribution[0].detach().cpu().numpy()
+        mean_cgm = attr_cgm_batch.sum(axis=2, keepdims=True)
+        cgm_shape = (mean_cgm.shape[0], 1, attribution[0].shape[2], 1)
+        attr_cgm.append(np.broadcast_to(mean_cgm, cgm_shape))
+
+        attr_basal_batch = attribution[1].detach().cpu().numpy()
+        mean_basal = attr_basal_batch.sum(axis=2, keepdims=True)
+        basal_shape = (mean_basal.shape[0], 1, attribution[1].shape[2], 1)
+        attr_basal.append(np.broadcast_to(mean_basal, basal_shape))
+
+        attr_bolus_batch = attribution[2].detach().cpu().numpy()
+        mean_bolus = attr_bolus_batch.sum(axis=2, keepdims=True)
+        bolus_shape = (mean_bolus.shape[0], 1, attribution[2].shape[2], 1)
+        attr_bolus.append(np.broadcast_to(mean_bolus, bolus_shape))
+
+        attr_meal_batch = attribution[3].detach().cpu().numpy()
+        mean_meal = attr_meal_batch.sum(axis=2, keepdims=True)
+        meal_shape = (mean_meal.shape[0], 1, attribution[3].shape[2], 1)
+        attr_meal.append(np.broadcast_to(mean_meal, meal_shape))
+
+        count += 1
+
+    # concatenate the attribution values and input values
+    attr_cgm = np.concatenate(attr_cgm, axis=0)
+    attr_basal = np.concatenate(attr_basal, axis=0)
+    attr_bolus = np.concatenate(attr_bolus, axis=0)
+    attr_meal = np.concatenate(attr_meal, axis=0)
+    print(
+        f"Attribution shapes: {attr_cgm.shape}, {attr_basal.shape}, {attr_bolus.shape}, {attr_meal.shape}"
+    )
+
+    cgm_values = np.concatenate(cgm_values, axis=0)
+    basal_values = np.concatenate(basal_values, axis=0)
+    bolus_values = np.concatenate(bolus_values, axis=0)
+    meal_values = np.concatenate(meal_values, axis=0)
+    print(
+        f"Input shapes: {cgm_values.shape}, {basal_values.shape}, {bolus_values.shape}, {meal_values.shape}"
+    )
+
+    # average the attribution values across sequence length
+    fig, ax = vis.plot_interpretability(
+        attr_cgm[:, :, -1, :],  # only take the last frame
+        attr_meal[:, :, -1, :],
+        attr_basal[:, :, -1, :],
+        attr_bolus[:, :, -1, :],
+        cgm_values=cgm_values[:, -1, :],  # only take the last frame
+        carb_values=meal_values[:, -1, :],
+        basal_values=basal_values[:, -1, :],
+        bolus_values=bolus_values[:, -1, :],
+    )
+
+    # record the attribution values
+    shap_per_patient = {
+        "CGM": attr_cgm[:, :, -1, :].reshape(-1),
+        "Carb Intake": attr_meal[:, :, -1, :].reshape(-1),
+        "Insulin Basal": attr_basal[:, :, -1, :].reshape(-1),
+        "Insulin Bolus": attr_bolus[:, :, -1, :].reshape(-1),
+    }
+
+    return fig, ax, shap_per_patient
+
+
 # interpretability baseline
 def calculate_shap_for_4channels(
     model,
     dataloader,
     max_samples=10,
-    n_samples=10,
+    n_samples=5,
 ):
     """
     Calculate SHAP values for Baseline model with 4 channels,
