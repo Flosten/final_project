@@ -136,17 +136,35 @@ def visualise_preds_comparison(
 
     min_len = min(base_len, prop_len, truth_len)
 
-    baseline_pred = pred1[-min_len:]
-    proposed_pred = pred2[-min_len:]
-    truth = truth[-min_len:]
+    total_time = (
+        7 * 24 * 60
+    ) // time_steps  # total time in minutes divided by time steps
+    if total_time < 0:
+        total_time = min_len
+
+    if min_len > total_time:
+        min_len = total_time
+
+    baseline_pred = np.asarray(pred1[-min_len:], dtype=float)
+    proposed_pred = np.asarray(pred2[-min_len:], dtype=float)
+    truth = np.asarray(truth[-min_len:], dtype=float)
+
+    gap = int(max(total_time - min_len, 0))
+    pad = np.full(gap, np.nan, dtype=float)
 
     min_x = min(min(baseline_pred), min(proposed_pred), min(truth))
     max_x = max(max(baseline_pred), max(proposed_pred), max(truth))
     y_min = min_x - 15
     y_max = max_x + 30
 
-    start_idx = base_len - min_len
-    time = np.arange(start_idx, start_idx + min_len)
+    baseline_pred = np.concatenate((pad, baseline_pred), axis=0)
+    proposed_pred = np.concatenate((pad, proposed_pred), axis=0)
+    truth = np.concatenate((pad, truth), axis=0)
+
+    time = np.arange(total_time)
+
+    # start_idx = base_len - min_len
+    # time = np.arange(start_idx, start_idx + min_len)
     xticks, xtick_labels = create_xticks(time, time_steps, ticks_per_day)
 
     ax.plot(
@@ -222,17 +240,36 @@ def visualise_preds_comparison_threshold(
 
     min_len = min(base_len, prop_len, truth_len)
 
-    baseline_pred = pred1[-min_len:]
-    proposed_pred = pred2[-min_len:]
-    truth = truth[-min_len:]
+    total_time = (
+        7 * 24 * 60
+    ) // time_steps  # total time in minutes divided by time steps
+
+    if total_time < 0:
+        total_time = min_len
+
+    if min_len > total_time:
+        min_len = total_time
+
+    baseline_pred = np.asarray(pred1[-min_len:], dtype=float)
+    proposed_pred = np.asarray(pred2[-min_len:], dtype=float)
+    truth = np.asarray(truth[-min_len:], dtype=float)
+
+    gap = int(max(total_time - min_len, 0))
+    pad = np.full(gap, np.nan, dtype=float)
 
     min_x = min(min(baseline_pred), min(proposed_pred), min(truth))
     max_x = max(max(baseline_pred), max(proposed_pred), max(truth))
     y_min = min_x - 15
     y_max = max_x + 30
 
-    start_idx = base_len - min_len
-    time = np.arange(start_idx, start_idx + min_len)
+    baseline_pred = np.concatenate((pad, baseline_pred), axis=0)
+    proposed_pred = np.concatenate((pad, proposed_pred), axis=0)
+    truth = np.concatenate((pad, truth), axis=0)
+
+    time = np.arange(total_time)
+
+    # start_idx = base_len - min_len
+    # time = np.arange(start_idx, start_idx + min_len)
     xticks, xtick_labels = create_xticks(time, time_steps, ticks_per_day)
 
     # plot threshold lines
@@ -523,14 +560,36 @@ def plot_errors(
 
     min_len = min(len_1, len_2)
 
-    baseline_arr = baseline_arr_full[:, -min_len:]
-    proposed_arr = proposed_arr_full[:, -min_len:]
+    total_time = (
+        7 * 24 * 60
+    ) // time_steps  # total time in minutes divided by time steps
+
+    if total_time < 0:
+        total_time = min_len
+
+    if min_len > total_time:
+        min_len = total_time
+
+    baseline_arr = np.asarray(baseline_arr_full[:, -min_len:], dtype=float)
+    proposed_arr = np.asarray(proposed_arr_full[:, -min_len:], dtype=float)
 
     baseline_mean, baseline_q_low, baseline_q_high = compute_q(baseline_arr)
     proposed_mean, proposed_q_low, proposed_q_high = compute_q(proposed_arr)
 
-    start_idx = len_1 - min_len
-    time = np.arange(start_idx, start_idx + min_len)
+    gap = int(max(total_time - min_len, 0))
+    pad = np.full(gap, np.nan, dtype=float)
+
+    baseline_mean = np.concatenate((pad, baseline_mean), axis=0)
+    baseline_q_low = np.concatenate((pad, baseline_q_low), axis=0)
+    baseline_q_high = np.concatenate((pad, baseline_q_high), axis=0)
+    proposed_mean = np.concatenate((pad, proposed_mean), axis=0)
+    proposed_q_low = np.concatenate((pad, proposed_q_low), axis=0)
+    proposed_q_high = np.concatenate((pad, proposed_q_high), axis=0)
+
+    time = np.arange(total_time)
+
+    # start_idx = len_1 - min_len
+    # time = np.arange(start_idx, start_idx + min_len)
     xticks, xtick_labels = create_xticks(time, time_steps, ticks_per_day)
 
     fig, ax = plt.subplots(figsize=(11, 6))
@@ -698,8 +757,8 @@ def plot_shap_boxplot(group_shap):
         data,
         patch_artist=True,  # set to True to fill the boxes with color
         widths=0.5,
-        showmeans=False,  # show the mean value
-        meanline=False,  # do not draw a line for the mean value
+        showmeans=True,  # show the mean value
+        meanline=True,  # draw a line for the mean value
         showfliers=False,  # do not show outliers
     )
 
@@ -711,8 +770,27 @@ def plot_shap_boxplot(group_shap):
 
     # set colors for the whiskers, caps, and medians
     for median, color in zip(bp["medians"], colors):
-        median.set_color("black")
+        median.set_color("none")
         median.set_linewidth(1)
+        median.set_visible(False)
+
+    for mean, color in zip(bp["means"], colors):
+        mean.set_color("black")
+        mean.set_linewidth(1)
+        mean.set_linestyle("-")
+
+    for i, d in enumerate(data, start=1):
+        mean_val = np.mean(d)
+        ax.plot(
+            i,
+            mean_val,
+            marker="o",
+            markersize=5,
+            markerfacecolor="white",
+            markeredgecolor="black",
+            fillstyle="none",
+            markeredgewidth=0.7,
+        )
 
     for whisker, cap in zip(bp["whiskers"], bp["caps"]):
         whisker.set_color("gray")
