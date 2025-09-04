@@ -76,3 +76,7 @@ The project is organized into the following folders and files:
 6. **Run the main script:**
    ```bash
    python main.py
+
+## Note:
+Since the dataset is quite large and the data resources are relatively important, the `Dataset` folder is left empty.  
+To run the experiments, please prepare and add the required datasets yourself according to the folder structure described in the README.
