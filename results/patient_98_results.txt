@@ -1,0 +1,50 @@
+Baseline Model Results:
+RMSE All: {'mean': 15.64136210121316, 'std': nan}
+Hyperglycemia RMSE: {'mean': 17.611254275763308, 'std': nan}
+Hypoglycemia RMSE: {'mean': 32.73057883149656, 'std': nan}
+Threshold RMSE: {'mean': 27.10415356457528, 'std': nan}
+Upward Delay: {'mean': 16.272727272727273, 'std': nan}
+Downward Delay: {'mean': 17.77777777777778, 'std': nan}
+FIT: {'mean': 50.27141552903136, 'std': nan}
+F1 Score: {'hypo': {'TP': {'mean': 5.0, 'std': nan}, 'FP': {'mean': 10.0, 'std': nan}, 'FN': {'mean': 1.0, 'std': nan}, 'Precision': {'mean': 0.3333, 'std': nan}, 'Recall': {'mean': 0.8333, 'std': nan}, 'F1': {'mean': 0.4762, 'std': nan}}, 'hyper': {'TP': {'mean': 10.0, 'std': nan}, 'FP': {'mean': 1.0, 'std': nan}, 'FN': {'mean': 3.0, 'std': nan}, 'Precision': {'mean': 0.9091, 'std': nan}, 'Recall': {'mean': 0.7692, 'std': nan}, 'F1': {'mean': 0.8333, 'std': nan}}, 'Overall': {'TP': {'mean': 15.0, 'std': nan}, 'FP': {'mean': 11.0, 'std': nan}, 'FN': {'mean': 4.0, 'std': nan}, 'Precision': {'mean': 0.5769, 'std': nan}, 'Recall': {'mean': 0.7895, 'std': nan}, 'F1': {'mean': 0.6667, 'std': nan}}}
+
+Proposed Model Results:
+RMSE All: {'mean': 18.165752638051373, 'std': nan}
+Hyperglycemia RMSE: {'mean': 15.403963986029366, 'std': nan}
+Hypoglycemia RMSE: {'mean': 26.433635471845868, 'std': nan}
+Threshold RMSE: {'mean': 22.68553029653543, 'std': nan}
+Upward Delay: {'mean': 8.534883720930232, 'std': nan}
+Downward Delay: {'mean': 15.395348837209303, 'std': nan}
+FIT: {'mean': 41.203392571415435, 'std': nan}
+F1 Score: {'hypo': {'TP': {'mean': 6.0, 'std': nan}, 'FP': {'mean': 6.0, 'std': nan}, 'FN': {'mean': 0.0, 'std': nan}, 'Precision': {'mean': 0.5, 'std': nan}, 'Recall': {'mean': 1.0, 'std': nan}, 'F1': {'mean': 0.6667, 'std': nan}}, 'hyper': {'TP': {'mean': 11.0, 'std': nan}, 'FP': {'mean': 1.0, 'std': nan}, 'FN': {'mean': 1.0, 'std': nan}, 'Precision': {'mean': 0.9167, 'std': nan}, 'Recall': {'mean': 0.9167, 'std': nan}, 'F1': {'mean': 0.9167, 'std': nan}}, 'Overall': {'TP': {'mean': 17.0, 'std': nan}, 'FP': {'mean': 7.0, 'std': nan}, 'FN': {'mean': 1.0, 'std': nan}, 'Precision': {'mean': 0.7083, 'std': nan}, 'Recall': {'mean': 0.9444, 'std': nan}, 'F1': {'mean': 0.8095, 'std': nan}}}
+
+Ablation Study Loss Function Results:
+RMSE All: {'mean': 16.82119568463316, 'std': nan}
+Hyperglycemia RMSE: {'mean': 16.152098549964442, 'std': nan}
+Hypoglycemia RMSE: {'mean': 27.457368314759258, 'std': nan}
+Threshold RMSE: {'mean': 23.605322664932906, 'std': nan}
+Upward Delay: {'mean': 9.534883720930232, 'std': nan}
+Downward Delay: {'mean': 15.209302325581396, 'std': nan}
+FIT: {'mean': 45.55528422879212, 'std': nan}
+F1 Score: {'hypo': {'TP': {'mean': 5.0, 'std': nan}, 'FP': {'mean': 2.0, 'std': nan}, 'FN': {'mean': 1.0, 'std': nan}, 'Precision': {'mean': 0.7143, 'std': nan}, 'Recall': {'mean': 0.8333, 'std': nan}, 'F1': {'mean': 0.7692, 'std': nan}}, 'hyper': {'TP': {'mean': 9.0, 'std': nan}, 'FP': {'mean': 2.0, 'std': nan}, 'FN': {'mean': 3.0, 'std': nan}, 'Precision': {'mean': 0.8182, 'std': nan}, 'Recall': {'mean': 0.75, 'std': nan}, 'F1': {'mean': 0.7826, 'std': nan}}, 'Overall': {'TP': {'mean': 14.0, 'std': nan}, 'FP': {'mean': 4.0, 'std': nan}, 'FN': {'mean': 4.0, 'std': nan}, 'Precision': {'mean': 0.7778, 'std': nan}, 'Recall': {'mean': 0.7778, 'std': nan}, 'F1': {'mean': 0.7778, 'std': nan}}}
+
+Ablation Study Physical Layer Results:
+RMSE All: {'mean': 15.764465214083394, 'std': nan}
+Hyperglycemia RMSE: {'mean': 16.21982300282313, 'std': nan}
+Hypoglycemia RMSE: {'mean': 29.709966305928976, 'std': nan}
+Threshold RMSE: {'mean': 25.20881579914095, 'std': nan}
+Upward Delay: {'mean': 11.093023255813954, 'std': nan}
+Downward Delay: {'mean': 12.953488372093023, 'std': nan}
+FIT: {'mean': 48.97557557992454, 'std': nan}
+F1 Score: {'hypo': {'TP': {'mean': 4.0, 'std': nan}, 'FP': {'mean': 1.0, 'std': nan}, 'FN': {'mean': 2.0, 'std': nan}, 'Precision': {'mean': 0.8, 'std': nan}, 'Recall': {'mean': 0.6667, 'std': nan}, 'F1': {'mean': 0.7273, 'std': nan}}, 'hyper': {'TP': {'mean': 8.0, 'std': nan}, 'FP': {'mean': 0.0, 'std': nan}, 'FN': {'mean': 4.0, 'std': nan}, 'Precision': {'mean': 1.0, 'std': nan}, 'Recall': {'mean': 0.6667, 'std': nan}, 'F1': {'mean': 0.8, 'std': nan}}, 'Overall': {'TP': {'mean': 12.0, 'std': nan}, 'FP': {'mean': 1.0, 'std': nan}, 'FN': {'mean': 6.0, 'std': nan}, 'Precision': {'mean': 0.9231, 'std': nan}, 'Recall': {'mean': 0.6667, 'std': nan}, 'F1': {'mean': 0.7742, 'std': nan}}}
+
+Ablation Study Dual Input Results:
+RMSE All: {'mean': 17.241077831196254, 'std': nan}
+Hyperglycemia RMSE: {'mean': 19.107194225111446, 'std': nan}
+Hypoglycemia RMSE: {'mean': 36.14811158802362, 'std': nan}
+Threshold RMSE: {'mean': 30.512641375764947, 'std': nan}
+Upward Delay: {'mean': 11.674418604651162, 'std': nan}
+Downward Delay: {'mean': 13.813953488372093, 'std': nan}
+FIT: {'mean': 44.196262875279416, 'std': nan}
+F1 Score: {'hypo': {'TP': {'mean': 3.0, 'std': nan}, 'FP': {'mean': 0.0, 'std': nan}, 'FN': {'mean': 3.0, 'std': nan}, 'Precision': {'mean': 1.0, 'std': nan}, 'Recall': {'mean': 0.5, 'std': nan}, 'F1': {'mean': 0.6667, 'std': nan}}, 'hyper': {'TP': {'mean': 11.0, 'std': nan}, 'FP': {'mean': 9.0, 'std': nan}, 'FN': {'mean': 1.0, 'std': nan}, 'Precision': {'mean': 0.55, 'std': nan}, 'Recall': {'mean': 0.9167, 'std': nan}, 'F1': {'mean': 0.6875, 'std': nan}}, 'Overall': {'TP': {'mean': 14.0, 'std': nan}, 'FP': {'mean': 9.0, 'std': nan}, 'FN': {'mean': 4.0, 'std': nan}, 'Precision': {'mean': 0.6087, 'std': nan}, 'Recall': {'mean': 0.7778, 'std': nan}, 'F1': {'mean': 0.6829, 'std': nan}}}
+
