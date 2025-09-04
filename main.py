@@ -190,7 +190,7 @@ def baseline_modeling(patient_num: int):
         plt.close(baseline_interp_fig)
 
         # error between predictions and truths
-        baseline_error = baseline_preds - baseline_truths
+        baseline_error = abs(baseline_preds - baseline_truths)
 
     else:
         baseline_train, baseline_val, baseline_input_scaler, baseline_output_scaler = (
@@ -314,7 +314,7 @@ def baseline_modeling(patient_num: int):
         plt.close(baseline_interp_fig)
 
         # error between predictions and truths
-        baseline_error = baseline_preds - baseline_truths
+        baseline_error = abs(baseline_preds - baseline_truths)
 
     # delete the model to free up memory
     del baseline_model, baseline_optimizer
@@ -552,7 +552,7 @@ def proposed_modeling(patient_num: int):
         plt.close(proposed_interp_fig)
 
         # error between predictions and truths
-        proposed_error = proposed_preds - proposed_truths
+        proposed_error = abs(proposed_preds - proposed_truths)
 
     else:
         carb_folder = "ts-dtM"
@@ -716,7 +716,7 @@ def proposed_modeling(patient_num: int):
         plt.close(proposed_interp_fig)
 
         # error between predictions and truths
-        proposed_error = proposed_preds - proposed_truths
+        proposed_error = abs(proposed_preds - proposed_truths)
 
     # delete the model to free up memory
     del proposed_model, proposed_optimizer
@@ -934,6 +934,7 @@ def ablation_study_loss_function(patient_num: int):
             seq_len_carb_intake=proposed_carb_seq_len,
             interval=interval,
             max_samples=10,
+            n_samples=1,
         )
         proposed_interp_fig_name = (
             f"ablation_study_loss_function_interpretability_patient_{patient_num}.png"
@@ -942,7 +943,7 @@ def ablation_study_loss_function(patient_num: int):
         plt.close(proposed_interp_fig)
 
         # error between predictions and truths
-        proposed_error = proposed_preds - proposed_truths
+        proposed_error = abs(proposed_preds - proposed_truths)
 
     else:
         carb_folder = "ts-dtM"
@@ -1110,7 +1111,7 @@ def ablation_study_loss_function(patient_num: int):
         plt.close(proposed_interp_fig)
 
         # error between predictions and truths
-        proposed_error = proposed_preds - proposed_truths
+        proposed_error = abs(proposed_preds - proposed_truths)
 
     # delete the model to free up memory
     del proposed_model, proposed_optimizer
@@ -1334,7 +1335,7 @@ def ablation_study_phy_layer(patient_num: int):
         plt.close(proposed_interp_fig)
 
         # error between predictions and truths
-        proposed_error = proposed_preds - proposed_truths
+        proposed_error = abs(proposed_preds - proposed_truths)
 
     else:
         carb_folder = "ts-dtM"
@@ -1500,7 +1501,401 @@ def ablation_study_phy_layer(patient_num: int):
         plt.close(proposed_interp_fig)
 
         # error between predictions and truths
-        proposed_error = proposed_preds - proposed_truths
+        proposed_error = abs(proposed_preds - proposed_truths)
+
+    # delete the model to free up memory
+    del proposed_model, proposed_optimizer
+
+    # return the results
+    return (
+        proposed_preds,
+        proposed_truths,
+        attention_weights,
+        proposed_rmse_all,
+        proposed_hyper_rmse,
+        proposed_hypo_rmse,
+        proposed_thres_rmse,
+        proposed_ud,
+        proposed_dd,
+        proposed_fit,
+        proposed_f1_score,
+        proposed_error,
+        proposed_shap_perp,
+    )
+
+
+def ablation_study_dual_input(patient_num: int):
+    """Ablation study for the Dual Input in the proposed model."""
+    train_type = "train"
+    test_type = "test"
+    folder_4days_path = "train_4days"
+    folder_30days_path = "train_30days"
+    folder_test_path = "ts-dt1"
+    ph = 60
+    interval = 5
+    proposed_cgm_seq_len = 300
+    proposed_carb_seq_len = 480
+    proposed_basal_seq_len = 600
+    proposed_bolus_seq_len = 480
+    alpha = 0.3
+    beta = 0.0
+    ticks = 2
+    proposed_input_size = 1
+    proposed_hidden_size = 38
+    proposed_output_size = 1
+    proposed_lr = 0.0018
+    proposed_epochs = 20
+    proposed_other_lr = 0.0018
+    proposed_other_epochs = 40
+
+    dws = 70
+    dwe = 10
+
+    # patient 98 and other patients have different datasets
+    if patient_num == 98:
+        # peak time for input variables
+        proposed_peak_carb = 210
+        proposed_peak_basal = 400
+        proposed_peak_bolus = 290
+
+        # preprocess the data
+        proposed_train, proposed_val, proposed_input_scaler, proposed_output_scaler = (
+            prep.data_preprocessing_proposed(
+                data_type=train_type,
+                folder_path_4days=folder_4days_path,
+                folder_path_30days=folder_30days_path,
+                p_num=patient_num,
+                seq_len_cgm=proposed_cgm_seq_len,
+                seq_len_carb=proposed_carb_seq_len,
+                seq_len_basal=proposed_basal_seq_len,
+                seq_len_bolus=proposed_bolus_seq_len,
+                ph=ph,
+                interval=interval,
+            )
+        )
+
+        # create the model
+        proposed_model = abla.ProposedModel_dual_input(
+            input_size=proposed_input_size,
+            hidden_size=proposed_hidden_size,
+            output_size=proposed_output_size,
+        )
+        proposed_optimizer = Adam(proposed_model.parameters(), lr=proposed_lr)
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+        # # train the model
+        # proposed_model, proposed_lr_fig, _ = abla.proposed_model_train_dual(
+        #     model=proposed_model,
+        #     train_dataloader=proposed_train,
+        #     val_dataloader=proposed_val,
+        #     optimizer=proposed_optimizer,
+        #     epochs=proposed_epochs,
+        #     alpha=alpha,
+        #     beta=beta,
+        #     seq_len_carb_intake=proposed_carb_seq_len,
+        #     seq_len_basal_insulin=proposed_basal_seq_len,
+        #     seq_len_bolus_insulin=proposed_bolus_seq_len,
+        #     tp_insulin_basal=proposed_peak_basal,
+        #     tp_insulin_bolus=proposed_peak_bolus,
+        #     tp_meal=proposed_peak_carb,
+        #     interval=interval,
+        #     device=device,
+        # )
+        # # save the model
+        # torch.save(
+        #     proposed_model.state_dict(),
+        #     os.path.join(
+        #         "models", f"abla_dual_proposed_model_patient_{patient_num}.pth"
+        #     ),
+        # )
+        # # save the learning curve figure
+        # proposed_lr_fig_name = (
+        #     f"abla_dual_proposed_learning_curve_patient_{patient_num}.png"
+        # )
+        # proposed_lr_fig.savefig(os.path.join("figures", proposed_lr_fig_name))
+        # plt.close(proposed_lr_fig)
+
+        # load the pretrained model
+        proposed_model.load_state_dict(
+            torch.load(
+                os.path.join(
+                    "models", f"abla_dual_proposed_model_patient_{patient_num}.pth"
+                )
+            )
+        )
+
+        # evaluate the model on the test set
+        # preprocess test data
+        proposed_test = prep.test_data_preprocessing_proposed(
+            data_type=test_type,
+            folder_path_1=folder_test_path,
+            p_num=patient_num,
+            seq_len_cgm=proposed_cgm_seq_len,
+            seq_len_carb=proposed_carb_seq_len,
+            seq_len_basal=proposed_basal_seq_len,
+            seq_len_bolus=proposed_bolus_seq_len,
+            ph=ph,
+            interval=interval,
+            input_scalers=proposed_input_scaler,
+            output_scaler=proposed_output_scaler,
+        )
+        # evaluate the model
+        (
+            proposed_preds,
+            proposed_truths,
+            proposed_pred_alarms,
+            proposed_truth_alarms,
+            attention_weights,
+            proposed_eval_fig,
+            _,
+            proposed_eval_threshold_fig,
+            _,
+        ) = abla.proposed_model_eval_dual(
+            model=proposed_model,
+            test_dataloader=proposed_test,
+            tp_insulin_basal=proposed_peak_basal,
+            tp_insulin_bolus=proposed_peak_bolus,
+            tp_meal=proposed_peak_carb,
+            seq_len_carb_intake=proposed_carb_seq_len,
+            seq_len_basal_insulin=proposed_basal_seq_len,
+            seq_len_bolus_insulin=proposed_bolus_seq_len,
+            interval=interval,
+            scaler=proposed_output_scaler["G"],
+            device=device,
+            ticks_per_day=ticks,
+            time_steps=interval,
+        )
+        # save the evaluation figures
+        proposed_eval_fig_name = f"ablation_study_dual_patient_{patient_num}.png"
+        proposed_eval_fig.savefig(os.path.join("figures", proposed_eval_fig_name))
+        plt.close(proposed_eval_fig)
+
+        proposed_eval_threshold_fig_name = (
+            f"ablation_study_dual_threshold_patient_{patient_num}.png"
+        )
+        proposed_eval_threshold_fig.savefig(
+            os.path.join("figures", proposed_eval_threshold_fig_name)
+        )
+        plt.close(proposed_eval_threshold_fig)
+
+        # evaluate the model using evaluation metrics
+        # RMSE for all predictions
+        proposed_rmse_all = eva.calculate_rmse(proposed_preds, proposed_truths)
+
+        # RMSE for values above the threshold
+        proposed_hyper_rmse, proposed_hypo_rmse, proposed_thres_rmse = (
+            eva.calculate_threshold_rmse(proposed_preds, proposed_truths)
+        )
+
+        # Calculate upward delay and downward delay
+        proposed_ud, proposed_dd, _, _ = eva.calculate_ud_dd(
+            prediction=proposed_preds,
+            truth=proposed_truths,
+            ph=ph,
+        )
+
+        # Calculate FIT
+        proposed_fit = eva.calculate_fit(proposed_preds, proposed_truths)
+
+        # calculate f1 score
+        proposed_f1_score = eva.evaluate_alarm_multiclass(
+            alarm=proposed_pred_alarms,
+            truth=proposed_truth_alarms,
+            dws=dws,
+            dwe=dwe,
+        )
+
+        # model interpretability
+        proposed_interp_fig, _, proposed_shap_perp = (
+            eva.calculate_shap_proposed_no_dual_input(
+                model=proposed_model,
+                dataloader=proposed_test,
+                tp_insulin_basal=proposed_peak_basal,
+                tp_insulin_bolus=proposed_peak_bolus,
+                tp_meal=proposed_peak_carb,
+                seq_len_basal_insulin=proposed_basal_seq_len,
+                seq_len_bolus_insulin=proposed_bolus_seq_len,
+                seq_len_carb_intake=proposed_carb_seq_len,
+                interval=interval,
+                max_samples=10,
+            )
+        )
+        proposed_interp_fig_name = (
+            f"ablation_study_dual_interpretability_patient_{patient_num}.png"
+        )
+        proposed_interp_fig.savefig(os.path.join("figures", proposed_interp_fig_name))
+        plt.close(proposed_interp_fig)
+
+        # error between predictions and truths
+        proposed_error = abs(proposed_preds - proposed_truths)
+
+    else:
+        carb_folder = "ts-dtM"
+        bolus_folder = "ts-dtI"
+
+        # peak time for input variables
+        proposed_peak_basal = 400
+        proposed_peak_carb = mdl.get_peak_time(
+            patient_num=patient_num,
+            var_type=carb_folder,
+        )
+        proposed_peak_bolus = mdl.get_peak_time(
+            patient_num=patient_num,
+            var_type=bolus_folder,
+        )
+        # avoid peak time exceeding the sequence length
+        proposed_peak_carb = min(proposed_peak_carb, proposed_carb_seq_len)
+        proposed_peak_bolus = min(proposed_peak_bolus, proposed_bolus_seq_len)
+
+        # preprocess the data
+        proposed_train, proposed_val, proposed_input_scaler, proposed_output_scaler = (
+            prep.data_preprocessing_proposed_for_99(
+                data_type=train_type,
+                folder_path_4days=folder_4days_path,
+                p_num=patient_num,
+                seq_len_cgm=proposed_cgm_seq_len,
+                seq_len_carb=proposed_carb_seq_len,
+                seq_len_basal=proposed_basal_seq_len,
+                seq_len_bolus=proposed_bolus_seq_len,
+                ph=ph,
+                interval=interval,
+            )
+        )
+
+        # create the model
+        proposed_model = abla.ProposedModel_dual_input(
+            input_size=proposed_input_size,
+            hidden_size=proposed_hidden_size,
+            output_size=proposed_output_size,
+        )
+        proposed_optimizer = Adam(proposed_model.parameters(), lr=proposed_other_lr)
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+        # train the model
+        proposed_model, _, _ = abla.proposed_model_train_dual(
+            model=proposed_model,
+            train_dataloader=proposed_train,
+            val_dataloader=proposed_val,
+            optimizer=proposed_optimizer,
+            epochs=proposed_other_epochs,
+            alpha=alpha,
+            beta=beta,
+            seq_len_carb_intake=proposed_carb_seq_len,
+            seq_len_basal_insulin=proposed_basal_seq_len,
+            seq_len_bolus_insulin=proposed_bolus_seq_len,
+            tp_insulin_basal=proposed_peak_basal,
+            tp_insulin_bolus=proposed_peak_bolus,
+            tp_meal=proposed_peak_carb,
+            interval=interval,
+            device=device,
+        )
+        # # save the model
+        # torch.save(
+        #     proposed_model.state_dict(),
+        #     os.path.join(
+        #         "models", f"abla_dual_proposed_model_patient_{patient_num}.pth"
+        #     ),
+        # )
+
+        # evaluate the model on the test set
+        # preprocess test data
+        proposed_test = prep.test_data_preprocessing_proposed_for_99(
+            data_type=test_type,
+            folder_path_1=folder_test_path,
+            p_num=patient_num,
+            seq_len_cgm=proposed_cgm_seq_len,
+            seq_len_carb=proposed_carb_seq_len,
+            seq_len_basal=proposed_basal_seq_len,
+            seq_len_bolus=proposed_bolus_seq_len,
+            ph=ph,
+            interval=interval,
+            input_scalers=proposed_input_scaler,
+            output_scaler=proposed_output_scaler,
+        )
+        # evaluate the model
+        (
+            proposed_preds,
+            proposed_truths,
+            proposed_pred_alarms,
+            proposed_truth_alarms,
+            attention_weights,
+            proposed_eval_fig,
+            _,
+            proposed_eval_threshold_fig,
+            _,
+        ) = abla.proposed_model_eval_dual(
+            model=proposed_model,
+            test_dataloader=proposed_test,
+            tp_insulin_basal=proposed_peak_basal,
+            tp_insulin_bolus=proposed_peak_bolus,
+            tp_meal=proposed_peak_carb,
+            seq_len_carb_intake=proposed_carb_seq_len,
+            seq_len_basal_insulin=proposed_basal_seq_len,
+            seq_len_bolus_insulin=proposed_bolus_seq_len,
+            interval=interval,
+            scaler=proposed_output_scaler["G"],
+            device=device,
+            ticks_per_day=ticks,
+            time_steps=interval,
+        )
+
+        # # save the evaluation figures
+        # proposed_eval_fig_name = f"abla_dual_predictions_patient_{patient_num}.png"
+        # proposed_eval_fig.savefig(os.path.join("figures", proposed_eval_fig_name))
+        # proposed_eval_threshold_fig_name = (
+        #     f"abla_dual_predictions_threshold_patient_{patient_num}.png"
+        # )
+        # proposed_eval_threshold_fig.savefig(
+        #     os.path.join("figures", proposed_eval_threshold_fig_name)
+        # )
+        plt.close(proposed_eval_fig)
+        plt.close(proposed_eval_threshold_fig)
+
+        # evaluate the model using evaluation metrics
+        # RMSE for all predictions
+        proposed_rmse_all = eva.calculate_rmse(proposed_preds, proposed_truths)
+        # RMSE for values above the threshold
+        proposed_hyper_rmse, proposed_hypo_rmse, proposed_thres_rmse = (
+            eva.calculate_threshold_rmse(proposed_preds, proposed_truths)
+        )
+        # Calculate upward delay and downward delay
+        proposed_ud, proposed_dd, _, _ = eva.calculate_ud_dd(
+            prediction=proposed_preds,
+            truth=proposed_truths,
+            ph=ph,
+        )
+        # Calculate FIT
+        proposed_fit = eva.calculate_fit(proposed_preds, proposed_truths)
+        # calculate f1 score
+        proposed_f1_score = eva.evaluate_alarm_multiclass(
+            alarm=proposed_pred_alarms,
+            truth=proposed_truth_alarms,
+            dws=dws,
+            dwe=dwe,
+        )
+        # model interpretability
+        proposed_interp_fig, _, proposed_shap_perp = (
+            eva.calculate_shap_proposed_no_dual_input(
+                model=proposed_model,
+                dataloader=proposed_test,
+                tp_insulin_basal=proposed_peak_basal,
+                tp_insulin_bolus=proposed_peak_bolus,
+                tp_meal=proposed_peak_carb,
+                seq_len_basal_insulin=proposed_basal_seq_len,
+                seq_len_bolus_insulin=proposed_bolus_seq_len,
+                seq_len_carb_intake=proposed_carb_seq_len,
+                interval=interval,
+                max_samples=1,
+            )
+        )
+        # proposed_interp_fig_name = (
+        #     f"abla_dual_interpretability_patient_{patient_num}.png"
+        # )
+        # proposed_interp_fig.savefig(os.path.join("figures", proposed_interp_fig_name))
+        plt.close(proposed_interp_fig)
+
+        # error between predictions and truths
+        proposed_error = abs(proposed_preds - proposed_truths)
 
     # delete the model to free up memory
     del proposed_model, proposed_optimizer
@@ -1590,12 +1985,29 @@ def main():
         "Insulin Bolus": [],
     }
 
+    ablation_dual_rmse_all_list = []
+    ablation_dual_hyper_rmse_list = []
+    ablation_dual_hypo_rmse_list = []
+    ablation_dual_thres_rmse_list = []
+    ablation_dual_ud_list = []
+    ablation_dual_dd_list = []
+    ablation_dual_fit_list = []
+    ablation_dual_f1_score_list = []
+    ablation_dual_error_list = []
+    ablation_dual_group_shap = {
+        "CGM": [],
+        "Carb Intake": [],
+        "Insulin Basal": [],
+        "Insulin Bolus": [],
+    }
+
     # define list for patient 98
     baseline_preds_98 = []
     proposed_preds_98 = []
     truths = []
     ablation_loss_preds_98 = []
     ablation_phy_preds_98 = []
+    ablation_dual_preds_98 = []
 
     baseline_rmse_all_98_list = []
     baseline_hyper_rmse_98_list = []
@@ -1632,6 +2044,15 @@ def main():
     ablation_phy_dd_98_list = []
     ablation_phy_fit_98_list = []
     ablation_phy_f1_score_98_list = []
+
+    ablation_dual_rmse_all_98_list = []
+    ablation_dual_hyper_rmse_98_list = []
+    ablation_dual_hypo_rmse_98_list = []
+    ablation_dual_thres_rmse_98_list = []
+    ablation_dual_ud_98_list = []
+    ablation_dual_dd_98_list = []
+    ablation_dual_fit_98_list = []
+    ablation_dual_f1_score_98_list = []
 
     # Exploratory Data Analysis
     train_type = "train"
@@ -1697,7 +2118,7 @@ def main():
             baseline_ud_98_list.append(baseline_ud)
             baseline_dd_98_list.append(baseline_dd)
             baseline_fit_98_list.append(baseline_fit)
-            baseline_f1_score_98_list.append(baseline_f1_score["Overall"]["F1"])
+            baseline_f1_score_98_list.append(baseline_f1_score)
 
         # append the results to the lists
         baseline_rmse_all_list.append(baseline_rmse_all)
@@ -1707,7 +2128,7 @@ def main():
         baseline_ud_list.append(baseline_ud)
         baseline_dd_list.append(baseline_dd)
         baseline_fit_list.append(baseline_fit)
-        baseline_f1_score_list.append(baseline_f1_score["Overall"]["F1"])
+        baseline_f1_score_list.append(baseline_f1_score)
         baseline_error_list.append(baseline_error)
 
         # append the group SHAP values
@@ -1744,7 +2165,7 @@ def main():
             proposed_ud_98_list.append(proposed_ud)
             proposed_dd_98_list.append(proposed_dd)
             proposed_fit_98_list.append(proposed_fit)
-            proposed_f1_score_98_list.append(proposed_f1_score["Overall"]["F1"])
+            proposed_f1_score_98_list.append(proposed_f1_score)
 
         # append the results to the lists
         proposed_rmse_all_list.append(proposed_rmse_all)
@@ -1754,7 +2175,7 @@ def main():
         proposed_ud_list.append(proposed_ud)
         proposed_dd_list.append(proposed_dd)
         proposed_fit_list.append(proposed_fit)
-        proposed_f1_score_list.append(proposed_f1_score["Overall"]["F1"])
+        proposed_f1_score_list.append(proposed_f1_score)
         proposed_error_list.append(proposed_error)
 
         # append the group SHAP values
@@ -1901,9 +2322,7 @@ def main():
             ablation_loss_ud_98_list.append(ablation_loss_ud)
             ablation_loss_dd_98_list.append(ablation_loss_dd)
             ablation_loss_fit_98_list.append(ablation_loss_fit)
-            ablation_loss_f1_score_98_list.append(
-                ablation_loss_f1_score["Overall"]["F1"]
-            )
+            ablation_loss_f1_score_98_list.append(ablation_loss_f1_score)
 
         # append the results to the lists
         ablation_loss_rmse_all_list.append(ablation_loss_rmse_all)
@@ -1913,7 +2332,7 @@ def main():
         ablation_loss_ud_list.append(ablation_loss_ud)
         ablation_loss_dd_list.append(ablation_loss_dd)
         ablation_loss_fit_list.append(ablation_loss_fit)
-        ablation_loss_f1_score_list.append(ablation_loss_f1_score["Overall"]["F1"])
+        ablation_loss_f1_score_list.append(ablation_loss_f1_score)
         ablation_loss_error_list.append(ablation_loss_error)
 
         # append the group SHAP values
@@ -1951,7 +2370,7 @@ def main():
             ablation_phy_ud_98_list.append(ablation_phy_ud)
             ablation_phy_dd_98_list.append(ablation_phy_dd)
             ablation_phy_fit_98_list.append(ablation_phy_fit)
-            ablation_phy_f1_score_98_list.append(ablation_phy_f1_score["Overall"]["F1"])
+            ablation_phy_f1_score_98_list.append(ablation_phy_f1_score)
 
         # append the results to the lists
         ablation_phy_rmse_all_list.append(ablation_phy_rmse_all)
@@ -1961,11 +2380,59 @@ def main():
         ablation_phy_ud_list.append(ablation_phy_ud)
         ablation_phy_dd_list.append(ablation_phy_dd)
         ablation_phy_fit_list.append(ablation_phy_fit)
-        ablation_phy_f1_score_list.append(ablation_phy_f1_score["Overall"]["F1"])
+        ablation_phy_f1_score_list.append(ablation_phy_f1_score)
         ablation_phy_error_list.append(ablation_phy_error)
         # append the group SHAP values
         for key, arr in ablation_phy_shap_perp.items():
             ablation_phy_group_shap.setdefault(key, []).extend(
+                np.asarray(arr).ravel().tolist()
+            )
+        # close the figures to free up memory
+        plt.close("all")
+
+        # ablation study for dual input
+        print(f"Ablation Study Dual Input Patient {pat_num}")
+        (
+            ablation_dual_preds,
+            ablation_dual_truths,
+            attention_weights,
+            ablation_dual_rmse_all,
+            ablation_dual_hyper_rmse,
+            ablation_dual_hypo_rmse,
+            ablation_dual_thres_rmse,
+            ablation_dual_ud,
+            ablation_dual_dd,
+            ablation_dual_fit,
+            ablation_dual_f1_score,
+            ablation_dual_error,
+            ablation_dual_shap_perp,
+        ) = ablation_study_dual_input(pat_num)
+        if pat_num == 98:
+            # save the predictions for patient 98
+            ablation_dual_preds_98.append(ablation_dual_preds)
+
+            ablation_dual_rmse_all_98_list.append(ablation_dual_rmse_all)
+            ablation_dual_hyper_rmse_98_list.append(ablation_dual_hyper_rmse)
+            ablation_dual_hypo_rmse_98_list.append(ablation_dual_hypo_rmse)
+            ablation_dual_thres_rmse_98_list.append(ablation_dual_thres_rmse)
+            ablation_dual_ud_98_list.append(ablation_dual_ud)
+            ablation_dual_dd_98_list.append(ablation_dual_dd)
+            ablation_dual_fit_98_list.append(ablation_dual_fit)
+            ablation_dual_f1_score_98_list.append(ablation_dual_f1_score)
+
+        # append the results to the lists
+        ablation_dual_rmse_all_list.append(ablation_dual_rmse_all)
+        ablation_dual_hyper_rmse_list.append(ablation_dual_hyper_rmse)
+        ablation_dual_hypo_rmse_list.append(ablation_dual_hypo_rmse)
+        ablation_dual_thres_rmse_list.append(ablation_dual_thres_rmse)
+        ablation_dual_ud_list.append(ablation_dual_ud)
+        ablation_dual_dd_list.append(ablation_dual_dd)
+        ablation_dual_fit_list.append(ablation_dual_fit)
+        ablation_dual_f1_score_list.append(ablation_dual_f1_score)
+        ablation_dual_error_list.append(ablation_dual_error)
+        # append the group SHAP values
+        for key, arr in ablation_dual_shap_perp.items():
+            ablation_dual_group_shap.setdefault(key, []).extend(
                 np.asarray(arr).ravel().tolist()
             )
         # close the figures to free up memory
@@ -2042,6 +2509,42 @@ def main():
         ablation_phy_f1_score_98_list
     )
 
+    # ablation study for dual input results
+    ablation_dual_rmse_all_describe = eva.describe_results(ablation_dual_rmse_all_list)
+    ablation_dual_hyper_rmse_describe = eva.describe_results(
+        ablation_dual_hyper_rmse_list
+    )
+    ablation_dual_hypo_rmse_describe = eva.describe_results(
+        ablation_dual_hypo_rmse_list
+    )
+    ablation_dual_thres_rmse_describe = eva.describe_results(
+        ablation_dual_thres_rmse_list
+    )
+    ablation_dual_ud_describe = eva.describe_results(ablation_dual_ud_list)
+    ablation_dual_dd_describe = eva.describe_results(ablation_dual_dd_list)
+    ablation_dual_fit_describe = eva.describe_results(ablation_dual_fit_list)
+    ablation_dual_f1_score_describe = eva.describe_results(ablation_dual_f1_score_list)
+
+    # patient 98
+    ablation_dual_rmse_all_98_describe = eva.describe_results(
+        ablation_dual_rmse_all_98_list
+    )
+    ablation_dual_hyper_rmse_98_describe = eva.describe_results(
+        ablation_dual_hyper_rmse_98_list
+    )
+    ablation_dual_hypo_rmse_98_describe = eva.describe_results(
+        ablation_dual_hypo_rmse_98_list
+    )
+    ablation_dual_thres_rmse_98_describe = eva.describe_results(
+        ablation_dual_thres_rmse_98_list
+    )
+    ablation_dual_ud_98_describe = eva.describe_results(ablation_dual_ud_98_list)
+    ablation_dual_dd_98_describe = eva.describe_results(ablation_dual_dd_98_list)
+    ablation_dual_fit_98_describe = eva.describe_results(ablation_dual_fit_98_list)
+    ablation_dual_f1_score_98_describe = eva.describe_results(
+        ablation_dual_f1_score_98_list
+    )
+
     # save the results to a text file
     with open("results/ablation_study_results.txt", "w", encoding="utf-8") as f:
         f.write("Ablation Study Loss Function Results:\n")
@@ -2063,6 +2566,16 @@ def main():
         f.write(f"Downward Delay: {ablation_phy_dd_describe}\n")
         f.write(f"FIT: {ablation_phy_fit_describe}\n")
         f.write(f"F1 Score: {ablation_phy_f1_score_describe}\n\n")
+
+        f.write("Ablation Study Dual Input Results:\n")
+        f.write(f"RMSE All: {ablation_dual_rmse_all_describe}\n")
+        f.write(f"Hyperglycemia RMSE: {ablation_dual_hyper_rmse_describe}\n")
+        f.write(f"Hypoglycemia RMSE: {ablation_dual_hypo_rmse_describe}\n")
+        f.write(f"Threshold RMSE: {ablation_dual_thres_rmse_describe}\n")
+        f.write(f"Upward Delay: {ablation_dual_ud_describe}\n")
+        f.write(f"Downward Delay: {ablation_dual_dd_describe}\n")
+        f.write(f"FIT: {ablation_dual_fit_describe}\n")
+        f.write(f"F1 Score: {ablation_dual_f1_score_describe}\n\n")
 
     # save the results of patient 98 to a text file
     with open("results/patient_98_results.txt", "w", encoding="utf-8") as f:
@@ -2106,6 +2619,16 @@ def main():
         f.write(f"FIT: {ablation_phy_fit_98_describe}\n")
         f.write(f"F1 Score: {ablation_phy_f1_score_98_describe}\n\n")
 
+        f.write("Ablation Study Dual Input Results:\n")
+        f.write(f"RMSE All: {ablation_dual_rmse_all_98_describe}\n")
+        f.write(f"Hyperglycemia RMSE: {ablation_dual_hyper_rmse_98_describe}\n")
+        f.write(f"Hypoglycemia RMSE: {ablation_dual_hypo_rmse_98_describe}\n")
+        f.write(f"Threshold RMSE: {ablation_dual_thres_rmse_98_describe}\n")
+        f.write(f"Upward Delay: {ablation_dual_ud_98_describe}\n")
+        f.write(f"Downward Delay: {ablation_dual_dd_98_describe}\n")
+        f.write(f"FIT: {ablation_dual_fit_98_describe}\n")
+        f.write(f"F1 Score: {ablation_dual_f1_score_98_describe}\n\n")
+
     # plot the error distributions for ablation study
     # ablation study for loss function
     ablation_loss_error_fig, _ = vis.plot_errors(
@@ -2129,6 +2652,18 @@ def main():
     ablation_phy_error_fig_name = "Ablation (Physio Layer) Absolute Error plot.png"
     ablation_phy_error_fig.savefig(os.path.join("figures", ablation_phy_error_fig_name))
     plt.close(ablation_phy_error_fig)
+    # ablation study for dual input
+    ablation_dual_error_fig, _ = vis.plot_errors(
+        proposed_error_list,
+        ablation_dual_error_list,
+        label1="Proposed Model",
+        label2="Ablation (Dual Input)",
+    )
+    ablation_dual_error_fig_name = "Ablation (Dual Input) Absolute Error plot.png"
+    ablation_dual_error_fig.savefig(
+        os.path.join("figures", ablation_dual_error_fig_name)
+    )
+    plt.close(ablation_dual_error_fig)
 
     # plot the group SHAP values for ablation study
     # ablation study for loss function
@@ -2167,12 +2702,32 @@ def main():
     )
     plt.close(ablation_phy_group_shap_box_fig)
 
+    # ablation study for dual input
+    ablation_dual_group_shap_fig, _ = vis.plot_shap_violin(ablation_dual_group_shap)
+    ablation_dual_group_shap_fig_name = "Ablation (Dual Input) Group SHAP values.png"
+    ablation_dual_group_shap_fig.savefig(
+        os.path.join("figures", ablation_dual_group_shap_fig_name)
+    )
+    plt.close(ablation_dual_group_shap_fig)
+    # box plot for group SHAP values
+    ablation_dual_group_shap_box_fig, _ = vis.plot_shap_boxplot(
+        ablation_dual_group_shap
+    )
+    ablation_dual_group_shap_box_fig_name = (
+        "Ablation (Dual Input) Group SHAP values Boxplot.png"
+    )
+    ablation_dual_group_shap_box_fig.savefig(
+        os.path.join("figures", ablation_dual_group_shap_box_fig_name)
+    )
+    plt.close(ablation_dual_group_shap_box_fig)
+
     # plot the predictions for patient 98
     baseline_preds_98 = np.concatenate(baseline_preds_98, axis=0)
     proposed_preds_98 = np.concatenate(proposed_preds_98, axis=0)
     truths = np.concatenate(truths, axis=0)
     ablation_loss_preds_98 = np.concatenate(ablation_loss_preds_98, axis=0)
     ablation_phy_preds_98 = np.concatenate(ablation_phy_preds_98, axis=0)
+    ablation_dual_preds_98 = np.concatenate(ablation_dual_preds_98, axis=0)
 
     # visualise the predictions for patient 98
     # proposed model and baseline model
@@ -2269,6 +2824,38 @@ def main():
         os.path.join("figures", patient_98_abla_phy_com_thres_fig_name)
     )
     plt.close(patient_98_abla_phy_com_thres_fig)
+
+    # ablation study for dual input
+    patient_98_abla_dual_com_fig, _ = vis.visualise_preds_comparison(
+        pred1=proposed_preds_98,
+        pred2=ablation_dual_preds_98,
+        truth=truths,
+        label1="Proposed Model",
+        label2="Ablation (Dual Input)",
+        ticks_per_day=2,
+    )
+    patient_98_abla_dual_com_fig_name = (
+        "Patient 98 Predictions proposed vs ablation dual.png"
+    )
+    patient_98_abla_dual_com_fig.savefig(
+        os.path.join("figures", patient_98_abla_dual_com_fig_name)
+    )
+    plt.close(patient_98_abla_dual_com_fig)
+    patient_98_abla_dual_com_thres_fig, _ = vis.visualise_preds_comparison_threshold(
+        pred1=proposed_preds_98,
+        pred2=ablation_dual_preds_98,
+        truth=truths,
+        label1="Proposed Model",
+        label2="Ablation (Dual Input)",
+        ticks_per_day=2,
+    )
+    patient_98_abla_dual_com_thres_fig_name = (
+        "Patient 98 Predictions proposed vs ablation dual threshold.png"
+    )
+    patient_98_abla_dual_com_thres_fig.savefig(
+        os.path.join("figures", patient_98_abla_dual_com_thres_fig_name)
+    )
+    plt.close(patient_98_abla_dual_com_thres_fig)
 
 
 if __name__ == "__main__":
