@@ -1219,52 +1219,6 @@ def smooth_range_weight(bg, low=70.0, high=180.0, k=0.03, w_in=1.0, w_out=2.0):
     return w
 
 
-# -----------Huber Loss and Asymmetric Huber Loss Functions-----------
-def huber_loss(e, delta=10.0):
-    """
-    Huber loss function.
-
-    Parameters:
-        e (torch.Tensor): Prediction error (pred - truth).
-        delta (float): Threshold for the Huber loss.
-
-    Returns:
-        torch.Tensor: Huber loss value.
-    """
-    abs_e = torch.abs(e)
-    quad = (
-        0.5
-        * torch.minimum(abs_e, torch.tensor(delta, device=e.device, dtype=e.dtype)) ** 2
-    )
-    lin = delta * (
-        abs_e
-        - torch.minimum(abs_e, torch.tensor(delta, device=e.device, dtype=e.dtype))
-    )
-    return quad + lin
-
-
-def asymmetric_huber_loss(e, delta=10.0, over_ratio=1.2, under_ratio=1.0):
-    """
-    Asymmetric Huber loss function.
-
-    Parameters:
-        e (torch.Tensor): Prediction error (pred - truth).
-        delta (float): Threshold for the Huber loss.
-        over_ratio (float): Overestimation penalty ratio.
-        under_ratio (float): Underestimation penalty ratio.
-
-    Returns:
-        torch.Tensor: Asymmetric Huber loss value.
-    """
-    base = huber_loss(e, delta=delta)
-    factor = torch.where(
-        e > 0,
-        torch.tensor(over_ratio, device=e.device, dtype=e.dtype),
-        torch.tensor(under_ratio, device=e.device, dtype=e.dtype),
-    )
-    return factor * base
-
-
 # define the loss function for the proposed model
 def com_loss_function(
     pred,

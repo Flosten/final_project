@@ -267,7 +267,8 @@ class ProposedModel_dual_input(nn.Module):
 
         Args:
             cgm (torch.Tensor): Input tensor for past CGM data (batch_size, seq_length, input_size).
-            insulin (torch.Tensor): Insulin data (batch_size, seq_length, input_size).
+            basal_insulin (torch.Tensor): Input tensor for basal insulin data (batch_size, seq_length, input_size).
+            bolus_insulin (torch.Tensor): Input tensor for bolus insulin data (batch_size, seq_length, input_size).
             meal (torch.Tensor): Input tensor for meal data (batch_size, seq_length, input_size).
 
         Returns:
@@ -410,6 +411,7 @@ def com_loss_function(
         k (float): Scaling factor for the weight.
         w_in (float): Weight for values within the range.
         w_out (float): Weight for values outside the range.
+        lam_range (float): Weight for the range penalty term.
 
     Returns:
         torch.Tensor: Computed loss value.

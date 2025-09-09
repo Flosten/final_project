@@ -1,20 +1,20 @@
 # Learning-based alarm systems for hypoglycaemia and hyperglycaemia prevention
 ## Project Description
-This project focuses on developing learning-based alarm system for Type 1 Diabetes patients using the UVA/Padova simulator dataset. Accurate glucose prediction and reliable alarm generation is critical for enabling proactive diabetes management and preventing dangerous events such as hypoglycemia and hyperglycemia.
+This project focuses on developing learning-based alarm system for Type 1 Diabetes patients using the UVA/Padova simulator dataset. Accurate glucose prediction and reliable alarm generation is critical for enabling proactive diabetes management and preventing dangerous events such as hypoglycaemia and hyperglycaemia.
 
 ## Key Features
-**Multi-Channel LSTM:** separate modeling of CGM, insulin, and meal inputs.
+**Multi-Channel LSTM:** separate modeling of past CGM, carbohydrate intake, basal insulin and bolus insulin.
 
 **Dual-Input Mechanism** both the raw sequence data and the physio layer processed data are used as the input.
 
-**Physiological Modeling Layer:** combines raw and processed features to capture both data-driven and mechanistic patterns.
+**Physiological Modeling Layer:** simulates the effects of carbohydrate intake and insulin administration on BG level.
 
-**Customized Clinical Loss:** emphasizes hypoglycemia and hyperglycemia prediction for improved clinical relevance.
+**Customized Clinical Loss:** emphasizes hypoglycaemia and hyperglycaemia prediction for alarm generation.
 
 **Attention + SHAP:** ensures interpretability by identifying feature contributions at both individual and group levels.
 
 ## Results
-**Case Study:** the proposed model significantly outperforms baseline LSTM models, with ablation studies confirming the contribution of each module.
+**Case Study:** the proposed model outperforms the baseline in terms of critical ranges prediction and alarm performance, with ablation studies confirming the contribution of each module.
 
 **Group Study:** the proposed model consistently achieves better performance than baselines, demonstrating robustness even under limited data scenarios.
 

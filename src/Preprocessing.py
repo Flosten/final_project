@@ -1187,15 +1187,6 @@ class MultiInputDataset(torch.utils.data.Dataset):
         """
         return len(self.y)
 
-    # def __getitem__(self, idx):
-    #     x_item = {
-    #         key: torch.tensor(self.x_dict[key][idx], dtype=torch.float32)
-    #         for key in self.x_dict
-    #     }
-    #     y_item = torch.tensor(self.y[idx], dtype=torch.float32)
-    #     ori_y_item = torch.tensor(self.y_ori[idx], dtype=torch.float32)
-    #     return x_item, y_item, ori_y_item
-
     def __getitem__(self, idx):
         """
         Get a single item from the dataset.

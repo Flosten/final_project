@@ -267,22 +267,6 @@ def extract_event_starts(truth, label):
     return event_starts
 
 
-# def extract_pred_event(prediction, label):
-#     new_event_starts = []
-#     prev = -1
-#     for val in prediction:
-#         if val == label and prev != label:
-#             new_event_starts.append(label)
-#             prev = val
-#         elif val == label and prev == label:
-#             new_event_starts.append(2)
-#             prev = val
-#         else:
-#             new_event_starts.append(val)
-#             prev = val
-#     return new_event_starts
-
-
 def evaluate_alarm_multiclass(alarm, truth, dws, dwe, step=1, ph=60):
     """
     Evaluate the alarm system performance using F1 score, precision, and recall.
