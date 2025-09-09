@@ -24,7 +24,7 @@ The project is organized into the following folders and files:
   - `ablation_study.py`: Contains functions used for a series of ablation studies.
   - `Evaluation.py`: Contains functions used for evaluating the model performance
   - `Modeling.py`: Contains functions used for building, training, and evaluating the baseline model and proposed model.
-  - `Preprocessing.py`: Contains functions used for preprocessing training and testing datasets for model training.
+  - `Preprocessing.py`: Contains functions used for preprocessing training and testing datasets for model training and evaluating.
   - `Visualising.py`: Contains functions used for visualising the results.
 
 - **Datasets**: Stores the datasets that used in this project.
@@ -46,7 +46,7 @@ The project is organized into the following folders and files:
 
 - **models**: Stores the pre-trained model for patient 98.
 
-- **main.py**: The main script that contains the complete workflow code for the sentiment analysis task.
+- **main.py**: The main script that contains the complete workflow code for this task.
 
 ## Required Packages
 - `numpy`
